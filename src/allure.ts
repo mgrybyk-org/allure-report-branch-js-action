@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 import * as child_process from 'child_process'
 import * as fs from 'fs/promises'
+import * as path from 'path'
 import { platform } from 'process'
 // @ts-ignore lib provides no types
 import decompress from '@xhmikosr/decompress'
@@ -23,7 +24,7 @@ export const writeExecutorJson = async (
         reportUrl: string
     }
 ) => {
-    const dataFile = `${sourceReportDir}/executor.json`
+    const dataFile = path.join(sourceReportDir, 'executor.json')
     const dataJson: AllureExecutor = {
         // type is required, otherwise allure fails with java.lang.NullPointerException
         type: 'github',
@@ -67,11 +68,15 @@ export const deleteAllure = async (allureCliDir: string) => {
 }
 
 export const spawnAllure = async (allureCliDir: string, allureResultsDir: string, allureReportDir: string) => {
-    const allureChildProcess = child_process.spawn(
-        `${allureCliDir}/bin/${platform === 'win32' ? 'allure.bat' : 'allure'}`,
-        ['generate', '--clean', allureResultsDir, '-o', allureReportDir],
-        { stdio: 'inherit' }
-    )
+    const cliArgs = ['generate', '--clean', allureResultsDir, '-o', allureReportDir]
+    let allureChildProcess: child_process.ChildProcess
+    if (platform === 'win32') {
+        allureChildProcess = child_process.spawn('cmd', ['/c', path.join(allureCliDir, 'bin', 'allure.bat'), ...cliArgs], {
+            stdio: 'inherit',
+        })
+    } else {
+        allureChildProcess = child_process.spawn(`${allureCliDir}/bin/allure`, cliArgs, { stdio: 'inherit' })
+    }
     const generation = new Promise<void>((resolve, reject) => {
         allureChildProcess.once('error', reject)
         allureChildProcess.once('exit', (code: unknown) => (code === 0 ? resolve() : reject(code)))
@@ -81,7 +86,7 @@ export const spawnAllure = async (allureCliDir: string, allureResultsDir: string
 }
 
 export const getLastRunId = async (reportBaseDir: string) => {
-    const dataFile = `${reportBaseDir}/lastRun.json`
+    const dataFile = path.join(reportBaseDir, 'lastRun.json')
 
     if (await isFileExist(dataFile)) {
         const lastRun: LastRunJson = JSON.parse((await fs.readFile(dataFile)).toString('utf-8'))
@@ -92,7 +97,7 @@ export const getLastRunId = async (reportBaseDir: string) => {
 }
 
 export const writeLastRunId = async (reportBaseDir: string, runId: number, runTimestamp: number) => {
-    const dataFile = `${reportBaseDir}/lastRun.json`
+    const dataFile = path.join(reportBaseDir, 'lastRun.json')
 
     const dataJson: LastRunJson = { runId, runTimestamp }
 
@@ -100,8 +105,10 @@ export const writeLastRunId = async (reportBaseDir: string, runId: number, runTi
 }
 
 export const updateDataJson = async (reportBaseDir: string, reportDir: string, runId: number, runUniqueId: string) => {
-    const summaryJson: AllureSummaryJson = JSON.parse((await fs.readFile(`${reportDir}/widgets/summary.json`)).toString('utf-8'))
-    const dataFile = `${reportBaseDir}/data.json`
+    const summaryJson: AllureSummaryJson = JSON.parse(
+        (await fs.readFile(path.join(reportDir, 'widgets', 'summary.json'))).toString('utf-8')
+    )
+    const dataFile = path.join(reportBaseDir, 'data.json')
     let dataJson: AllureRecord[]
 
     if (await isFileExist(dataFile)) {
@@ -143,7 +150,7 @@ export const getTestResultIcon = (testResult: AllureRecordTestResult) => {
     return '❔'
 }
 
-export const writeAllureListing = async (reportBaseDir: string) => fs.writeFile(`${reportBaseDir}/index.html`, allureReport)
+export const writeAllureListing = async (reportBaseDir: string) => fs.writeFile(path.join(reportBaseDir, 'index.html'), allureReport)
 
 export const isAllureResultsOk = async (sourceReportDir: string) => {
     if (await isFileExist(sourceReportDir)) {

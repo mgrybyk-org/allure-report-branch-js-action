@@ -1,3 +1,4 @@
+import * as path from 'path'
 import * as core from '@actions/core'
 import * as github from '@actions/github'
 import * as io from '@actions/io'
@@ -32,7 +33,7 @@ try {
     const reportId = core.getInput('report_id')
     const listDirs = core.getInput('list_dirs') == 'true'
     const branchName = getBranchName(github.context.ref, github.context.payload.pull_request)
-    const reportBaseDir = `${ghPagesPath}/${baseDir}/${branchName}/${reportId}`
+    const reportBaseDir = path.join(ghPagesPath, baseDir, branchName, reportId)
 
     /**
      * `runId` is unique but won't change on job re-run
@@ -40,7 +41,7 @@ try {
      * that's why the `runTimestamp` is used to guarantee uniqueness
      */
     const runUniqueId = `${github.context.runId}_${runTimestamp}`
-    const reportDir = `${reportBaseDir}/${runUniqueId}`
+    const reportDir = path.join(reportBaseDir, runUniqueId)
 
     // urls
     const githubActionRunUrl = `https://github.com/${github.context.repo.owner}/${github.context.repo.repo}/actions/runs/${github.context.runId}`
@@ -84,13 +85,13 @@ try {
             await writeFolderListing(ghPagesPath, '.')
         }
         await writeFolderListing(ghPagesPath, baseDir)
-        await writeFolderListing(ghPagesPath, `${baseDir}/${branchName}`)
+        await writeFolderListing(ghPagesPath, path.join(baseDir, branchName))
     }
 
     // process allure report
     const lastRunId = await getLastRunId(reportBaseDir)
     if (lastRunId) {
-        await io.cp(`${reportBaseDir}/${lastRunId}/history`, sourceReportDir, { recursive: true })
+        await io.cp(path.join(reportBaseDir, lastRunId, 'history'), sourceReportDir, { recursive: true })
     }
     await writeExecutorJson(sourceReportDir, {
         runUniqueId,
