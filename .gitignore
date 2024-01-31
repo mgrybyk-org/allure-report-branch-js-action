@@ -1,0 +1,10 @@
+node_modules
+.DS_Store
+src/report_*.ts
+allure-cli
+allure-report
+allure-results
+/test-results/
+/playwright-report/
+/playwright/.cache/
+tests/**/*-darwin.png
