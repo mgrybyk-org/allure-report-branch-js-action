@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 import * as child_process from 'child_process'
 import * as fs from 'fs/promises'
+import { platform } from 'process'
 // @ts-ignore lib provides no types
 import decompress from '@xhmikosr/decompress'
 // @ts-ignore lib provides no types
@@ -65,9 +66,9 @@ export const deleteAllure = async (allureCliDir: string) => {
     }
 }
 
-export const spawnAllure = async (allureResultsDir: string, allureReportDir: string) => {
+export const spawnAllure = async (allureCliDir: string, allureResultsDir: string, allureReportDir: string) => {
     const allureChildProcess = child_process.spawn(
-        '/allure-commandline/bin/allure',
+        `${allureCliDir}/bin/${platform === 'win32' ? 'allure.bat' : 'allure'}`,
         ['generate', '--clean', allureResultsDir, '-o', allureReportDir],
         { stdio: 'inherit' }
     )
