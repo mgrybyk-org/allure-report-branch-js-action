@@ -1,5 +1,5 @@
-name: 'Allure Report with history per branch'
-description: 'Generate Allure Report with history per branch'
+name: 'Allure Report with history per branch (JS)'
+description: 'Generate Allure Report with history per branch (JS)'
 author: 'mgrybyk'
 branding:
   icon: 'monitor'

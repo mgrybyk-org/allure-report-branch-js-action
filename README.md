@@ -1,8 +1,10 @@
 # allure-report-branch-js-action
 
-Allure Report with history per branch (type: `node20`)
+A **JavaScript** version of the Allure Report with history per branch (type: `node20`)
 
-**WARNING: Requires java to be installed in container in prior to using the action!**
+**WARNING: Requires java to be installed in prior to using the action!**
+
+Regular version of the action: [allure-report-with-history-per-branch](https://github.com/marketplace/actions/allure-report-with-history-per-branch)
 
 See examples:
 
