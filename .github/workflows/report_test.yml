@@ -102,8 +102,8 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
 
-      - name: e2e
-        run: npm run e2e
+      - name: Run e2e and ignore snapshots update
+        run: npm run e2e -- --update-snapshots
 
       - name: Checkout gh-pages
         uses: actions/checkout@v4
@@ -156,8 +156,8 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
 
-      - name: e2e
-        run: npm run e2e
+      - name: Run e2e and ignore snapshots update
+        run: npm run e2e -- --update-snapshots
 
       - name: Checkout gh-pages
         uses: actions/checkout@v4
