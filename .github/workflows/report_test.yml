@@ -1,0 +1,88 @@
+name: Test Action
+
+on:
+  pull_request:
+  push:
+    branches: ['main']
+  workflow_dispatch:
+
+permissions:
+  # Give the default GITHUB_TOKEN write permission to commit and push the changed files back to the repository.
+  contents: write
+  # required by https://github.com/thollander/actions-comment-pull-request
+  pull-requests: write
+
+# Allow only one job per PR or branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true # cancel jobs in progress
+
+jobs:
+  test:
+    timeout-minutes: 180
+    runs-on: ubuntu-latest
+    name: Build, Test, Report
+
+    steps:
+      # To use this repository's private action,
+      # you must check out the repository
+      - uses: actions/checkout@v3
+
+      - run: npm ci --no-fund --no-audit --no-progress
+      - run: npm run checks
+      - run: npm run build
+      - name: Make sure dist was commited before push
+        run: |
+          git status -s -uno
+          [ $(git status -s -uno | wc -l | bc ) != "0" ] && exit 1 || echo OK
+      - run: npx playwright install --with-deps chromium
+      - name: Update screenshots in PRs
+        if: github.event_name == 'pull_request'
+        run: npm run e2e -- --update-snapshots
+      - name: git commit and push
+        if: github.event_name == 'pull_request'
+        uses: mgrybyk/git-commit-pull-push-action@v1
+        with:
+          branch: ${{ github.head_ref }}
+          commit_message: Update screenshots
+          add_args: 'tests/**/*.png'
+
+      - name: Do not update screenshots if not PR
+        if: github.event_name != 'pull_request'
+        run: npm run e2e
+
+      - name: Checkout gh-pages
+        uses: actions/checkout@v3
+        if: always()
+        continue-on-error: true
+        with:
+          ref: gh-pages # branch name
+          path: gh-pages-dir # checkout path
+
+      - name: Local Allure Report Action
+        uses: ./ # Uses an action in the root directory
+        if: always()
+        continue-on-error: true
+        id: self_test # used in comment to PR
+        with:
+          report_id: 'self-test'
+          gh_pages: 'gh-pages-dir'
+          report_dir: 'allure-results'
+          list_dirs: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Git Commit and Push Action
+        uses: mgrybyk/git-commit-pull-push-action@v1
+        if: always()
+        with:
+          repository: gh-pages-dir
+          branch: gh-pages
+
+      - name: Comment PR with Allure Report link
+        if: ${{ always() && github.event_name == 'pull_request' && steps.self_test.outputs.report_url }}
+        continue-on-error: true
+        uses: thollander/actions-comment-pull-request@v2
+        with:
+          message: |
+            ${{ steps.self_test.outputs.test_result_icon }} [Allure Report](${{ steps.self_test.outputs.report_url }}) | ${{ steps.self_test.outputs.test_result_passed }}/${{ steps.self_test.outputs.test_result_failed }}/${{ steps.self_test.outputs.test_result_total }} | [History](${{ steps.self_test.outputs.report_history_url }})
+          comment_tag: allure_self_test
+          mode: recreate

@@ -1,0 +1,51 @@
+{
+  "name": "allure-report-branch-js-action",
+  "version": "1.0.0",
+  "description": "Allure Report with history per branch",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "http-server ./reports --port 3000",
+    "generate_reports": "node prebuild.js",
+    "build": "npm run generate_reports && ncc build index.ts --target es2022 --license licenses.txt",
+    "check:compile": "npm run generate_reports && tsc",
+    "check:lint": "eslint --ext .ts --ignore-path .gitignore .",
+    "checks": "run-s check:*",
+    "postinstall": "npm run generate_reports",
+    "e2e": "playwright test",
+    "prepare": "husky install"
+  },
+  "keywords": [
+    "github",
+    "action",
+    "generate",
+    "allure",
+    "history",
+    "branch"
+  ],
+  "author": "mgrybyk",
+  "license": "MIT",
+  "dependencies": {
+    "@actions/core": "^1.10.1",
+    "@actions/github": "^6.0.0",
+    "@actions/io": "^1.1.3",
+    "@xhmikosr/decompress": "^9.0.1",
+    "@xhmikosr/decompress-targz": "^7.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.41.1",
+    "@types/node": "^20.11.13",
+    "@typescript-eslint/eslint-plugin": "^6.20.0",
+    "@typescript-eslint/parser": "^6.20.0",
+    "@vercel/ncc": "^0.38.1",
+    "allure-playwright": "^2.11.1",
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.1.3",
+    "http-server": "^14.1.1",
+    "husky": "^9.0.7",
+    "npm-run-all": "^4.1.5",
+    "prettier": "^3.2.4",
+    "typescript": "^5.3.3"
+  }
+}

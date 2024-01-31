@@ -1,0 +1,41 @@
+name: 'Allure Report with history per branch'
+description: 'Generate Allure Report with history per branch'
+author: 'mgrybyk'
+branding:
+  icon: 'monitor'
+  color: 'gray-dark'
+inputs:
+  report_dir:
+    description: 'Input allure results dir, default "allure-results"'
+    required: true
+    default: 'allure-results'
+  report_id:
+    description: 'Output allure report dir, default "allure-report"'
+    required: true
+    default: 'allure-report'
+  gh_pages:
+    description: 'Folder with gh-pages branch'
+    required: true
+    default: 'gh-pages'
+  list_dirs:
+    description: 'Write index.html to the Github Action folders. Might cause concurrency issues!'
+    required: false
+    default: false
+outputs:
+  report_url:
+    description: 'Published Allure Report url'
+  report_history_url:
+    description: 'Published Allure History list url'
+  test_result:
+    description: 'test result: PASS | FAIL | UNKNOWN'
+  test_result_icon:
+    description: 'test result icon: ✅ | ❌ | ❔'
+  test_result_passed:
+    description: 'Number of passed tests'
+  test_result_failed:
+    description: 'Number of failed tests'
+  test_result_total:
+    description: 'Number of tests in total'
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
