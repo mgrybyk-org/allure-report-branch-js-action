@@ -42,9 +42,6 @@ export const writeExecutorJson = async (
 export const extractAllure = async (allureCliDir: string, allureArchiveName: string) => {
     await decompress(allureArchiveName, '.', {
         map: (file: { data: Buffer; mode: number; mtime: string; path: string; type: string }) => {
-            if (platform === 'win32') {
-                console.log(file.path)
-            }
             file.path = `${allureCliDir}${file.path.substring(file.path.indexOf('/'))}`
             return file
         },
