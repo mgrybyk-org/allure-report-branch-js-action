@@ -40368,9 +40368,6 @@ const writeExecutorJson = async (sourceReportDir, { buildUrl, buildOrder, report
 const extractAllure = async (allureCliDir, allureArchiveName) => {
     await _xhmikosr_decompress(allureArchiveName, '.', {
         map: (file) => {
-            if (external_process_namespaceObject.platform === 'win32') {
-                console.log(file.path);
-            }
             file.path = `${allureCliDir}${file.path.substring(file.path.indexOf('/'))}`;
             return file;
         },
