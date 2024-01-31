@@ -98,7 +98,7 @@ try {
         buildUrl: githubActionRunUrl,
         reportUrl: ghPagesReportDir,
     })
-    await spawnAllure(sourceReportDir, reportDir)
+    await spawnAllure(allureCliDir, sourceReportDir, reportDir)
     const results = await updateDataJson(reportBaseDir, reportDir, github.context.runId, runUniqueId)
     await writeAllureListing(reportBaseDir)
     await writeLastRunId(reportBaseDir, github.context.runId, runTimestamp)
