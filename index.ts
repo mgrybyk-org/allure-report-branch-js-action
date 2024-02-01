@@ -20,7 +20,7 @@ import { getBranchName } from './src/helpers.js'
 import { isFileExist } from './src/isFileExists.js'
 
 const baseDir = 'allure-js-action'
-const allureRelease = '2.26.0'
+const allureRelease = '2.27.0'
 const allureCliDir = 'allure-cli'
 const allureArchiveName = 'allure-commandline.tgz'
 
