@@ -21,6 +21,14 @@ inputs:
     description: 'Write index.html to the Github Action folders. Might cause concurrency issues!'
     required: false
     default: false
+  cleanup_enabled:
+    description: 'Cleanup reports from deleted branches or if reports numbers is too big'
+    required: false
+    default: false
+  max_reports:
+    description: 'Max reports to keep per branch/report. Make sure to enable cleanup_enabled'
+    required: false
+    default: 100
 outputs:
   report_url:
     description: 'Published Allure Report url'

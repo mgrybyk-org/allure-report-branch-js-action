@@ -18,6 +18,7 @@ import {
 } from './src/allure.js'
 import { getBranchName } from './src/helpers.js'
 import { isFileExist } from './src/isFileExists.js'
+import { cleanupOutdatedBranches, cleanupOutdatedReports } from './src/cleanup.js'
 
 const baseDir = 'allure-js-action'
 const allureRelease = '2.27.0'
@@ -32,8 +33,11 @@ try {
     const ghPagesPath = core.getInput('gh_pages')
     const reportId = core.getInput('report_id')
     const listDirs = core.getInput('list_dirs') == 'true'
+    const cleanupEnabled = core.getInput('cleanup_enabled') == 'true'
+    const maxReports = parseInt(core.getInput('max_reports'), 10)
     const branchName = getBranchName(github.context.ref, github.context.payload.pull_request)
-    const reportBaseDir = path.join(ghPagesPath, baseDir, branchName, reportId)
+    const ghPagesBaseDir = path.join(ghPagesPath, baseDir)
+    const reportBaseDir = path.join(ghPagesBaseDir, branchName, reportId)
 
     /**
      * `runId` is unique but won't change on job re-run
@@ -46,8 +50,8 @@ try {
     // urls
     const githubActionRunUrl = `https://github.com/${github.context.repo.owner}/${github.context.repo.repo}/actions/runs/${github.context.runId}`
     const ghPagesUrl = `https://${github.context.repo.owner}.github.io/${github.context.repo.repo}`
-    const ghPagesBaseDir = `${ghPagesUrl}/${baseDir}/${branchName}/${reportId}`.replaceAll(' ', '%20')
-    const ghPagesReportDir = `${ghPagesBaseDir}/${runUniqueId}`.replaceAll(' ', '%20')
+    const ghPagesBaseUrl = `${ghPagesUrl}/${baseDir}/${branchName}/${reportId}`.replaceAll(' ', '%20')
+    const ghPagesReportUrl = `${ghPagesBaseUrl}/${runUniqueId}`.replaceAll(' ', '%20')
 
     // log
     console.log({
@@ -60,8 +64,10 @@ try {
         branchName,
         reportBaseDir,
         reportDir,
-        report_url: ghPagesReportDir,
+        report_url: ghPagesReportUrl,
         listDirs,
+        cleanupEnabled,
+        maxReports,
     })
 
     if (!(await isFileExist(ghPagesPath))) {
@@ -97,7 +103,7 @@ try {
         runUniqueId,
         buildOrder: github.context.runId,
         buildUrl: githubActionRunUrl,
-        reportUrl: ghPagesReportDir,
+        reportUrl: ghPagesReportUrl,
     })
     await spawnAllure(allureCliDir, sourceReportDir, reportDir)
     const results = await updateDataJson(reportBaseDir, reportDir, github.context.runId, runUniqueId)
@@ -105,13 +111,18 @@ try {
     await writeLastRunId(reportBaseDir, github.context.runId, runTimestamp)
 
     // outputs
-    core.setOutput('report_url', ghPagesReportDir)
-    core.setOutput('report_history_url', ghPagesBaseDir)
+    core.setOutput('report_url', ghPagesReportUrl)
+    core.setOutput('report_history_url', ghPagesBaseUrl)
     core.setOutput('test_result', results.testResult)
     core.setOutput('test_result_icon', getTestResultIcon(results.testResult))
     core.setOutput('test_result_passed', results.passed)
     core.setOutput('test_result_failed', results.failed)
     core.setOutput('test_result_total', results.total)
+
+    if (cleanupEnabled) {
+        await cleanupOutdatedBranches(ghPagesBaseDir)
+        await cleanupOutdatedReports(ghPagesBaseDir, maxReports)
+    }
 } catch (error) {
     core.setFailed(error.message)
 } finally {
