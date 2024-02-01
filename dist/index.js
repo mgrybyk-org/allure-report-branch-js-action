@@ -40465,12 +40465,16 @@ const getTestResultIcon = (testResult) => {
 };
 const writeAllureListing = async (reportBaseDir) => promises_.writeFile(external_path_.join(reportBaseDir, 'index.html'), allureReport);
 const isAllureResultsOk = async (sourceReportDir) => {
+    const allureResultExt = ['.json', '.xml'];
     if (await (0,isFileExists/* isFileExist */.e)(sourceReportDir)) {
-        const listfiles = (await promises_.readdir(sourceReportDir, { withFileTypes: true })).filter((d) => d.isFile() && d.name.toLowerCase().endsWith('.json'));
+        const listfiles = (await promises_.readdir(sourceReportDir, { withFileTypes: true })).filter((d) => {
+            const fileName = d.name.toLowerCase();
+            return d.isFile() && allureResultExt.some((ext) => fileName.endsWith(ext));
+        });
         if (listfiles.length > 0) {
             return true;
         }
-        console.log('allure-results folder has no json files:', sourceReportDir);
+        console.log('allure-results folder has no json or xml files:', sourceReportDir);
         return false;
     }
     console.log("allure-results folder doesn't exist:", sourceReportDir);
