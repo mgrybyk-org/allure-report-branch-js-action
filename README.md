@@ -9,7 +9,7 @@ Regular version of the action: [allure-report-with-history-per-branch](https://g
 See examples:
 
 - [Allure History List](https://mgrybyk.github.io/allure-report-branch-js-action/allure-js-action/main/self-test/)
-- [Allure Report](https://mgrybyk.github.io/allure-report-branch-js-action/allure-js-action/main/self-test/7729621496_1706720657486/)
+- [Allure Report](https://mgrybyk.github.io/allure-report-branch-js-action/allure-js-action/main/self-test/7729626691_1706720670013/)
 - [Browse different branches](https://mgrybyk.github.io/allure-report-branch-js-action/allure-js-action/)
 - [Pull Request Comment Example](https://github.com/mgrybyk/allure-report-branch-js-action/pull/3)
 
@@ -108,8 +108,6 @@ GitHub runners ubuntu-latest, windows-latest, macos-latest have Java installed s
 
 - [thollander/actions-comment-pull-request](https://github.com/thollander/actions-comment-pull-request) for building Github Action that comments the linked PRs
 
-## Upcoming features
+## Planned features
 
-1. cleanup: delete missing branches
-2. cleanup: delete reports per branch, 3. 
-3. cleanup: data.json. 
+- cleanup `data.json` file per report. Raise an issue if you're interested!
