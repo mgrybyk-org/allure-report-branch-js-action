@@ -146,6 +146,7 @@ jobs:
     timeout-minutes: 180
     runs-on: macos-latest
     name: Build, Test, Report in macOS
+    needs: test-ubuntu
 
     steps:
       # To use this repository's private action,

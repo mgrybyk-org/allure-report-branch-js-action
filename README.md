@@ -110,4 +110,6 @@ GitHub runners ubuntu-latest, windows-latest, macos-latest have Java installed s
 
 ## Upcoming features
 
-- cleanup old reports
+1. cleanup: delete missing branches
+2. cleanup: delete reports per branch, 3. 
+3. cleanup: data.json. 
