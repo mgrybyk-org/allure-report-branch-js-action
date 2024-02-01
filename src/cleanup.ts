@@ -43,7 +43,6 @@ export const cleanupOutdatedReports = async (ghPagesBaseDir: string, maxReports:
                 if (runs.length > maxReports) {
                     runs.sort()
                     while (runs.length > maxReports) {
-                        console.log('deleting run', runs[0], runs.length)
                         await fs.rm(path.join(ghPagesBaseDir, localBranch, reportName, runs.shift() as string), {
                             recursive: true,
                             force: true,

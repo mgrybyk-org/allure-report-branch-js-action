@@ -40576,7 +40576,6 @@ const cleanupOutdatedReports = async (ghPagesBaseDir, maxReports) => {
                 if (runs.length > maxReports) {
                     runs.sort();
                     while (runs.length > maxReports) {
-                        console.log('deleting run', runs[0], runs.length);
                         await promises_.rm(external_path_.join(ghPagesBaseDir, localBranch, reportName, runs.shift()), {
                             recursive: true,
                             force: true,
