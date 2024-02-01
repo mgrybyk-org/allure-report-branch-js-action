@@ -1,6 +1,7 @@
 import * as path from 'path'
 import * as fs from 'fs/promises'
 import { spawnProcess } from './spawnProcess.js'
+import { normalizeBranchName } from './helpers.js'
 
 export const cleanupOutdatedBranches = async (ghPagesBaseDir: string) => {
     try {
@@ -9,7 +10,7 @@ export const cleanupOutdatedBranches = async (ghPagesBaseDir: string) => {
         const remoteBranches = lsRemote
             .split('\n')
             .filter((l) => l.includes(prefix))
-            .map((l) => l.split(prefix)[1])
+            .map((l) => normalizeBranchName(l.split(prefix)[1]))
 
         const localBranches = (await fs.readdir(ghPagesBaseDir, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name)
 
