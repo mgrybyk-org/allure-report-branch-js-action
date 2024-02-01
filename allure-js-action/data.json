@@ -4,6 +4,7 @@
     "allure-cli-path",
     "example-pr",
     "main",
-    "windows"
+    "windows",
+    "xml"
   ]
 }
