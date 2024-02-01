@@ -1,11 +1,8 @@
 {
   "links": [
     "..",
-    "allure-cli-path",
-    "allure-cli-version",
+    "cleanup",
     "example-pr",
-    "main",
-    "windows",
-    "xml"
+    "main"
   ]
 }
