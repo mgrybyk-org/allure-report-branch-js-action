@@ -10,17 +10,12 @@ export const cleanupOutdatedBranches = async (ghPagesBaseDir: string) => {
             .split('\n')
             .filter((l) => l.includes(prefix))
             .map((l) => l.split(prefix)[1])
-        console.log('remoteBranches:', remoteBranches)
 
         const localBranches = (await fs.readdir(ghPagesBaseDir, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name)
-        console.log('localBranches:', localBranches)
 
         for (const localBranch of localBranches) {
             if (!remoteBranches.includes(localBranch)) {
-                console.log('deleting branch:', localBranch)
                 await fs.rm(path.join(ghPagesBaseDir, localBranch), { recursive: true, force: true })
-            } else {
-                console.log('branch still exists:', localBranch)
             }
         }
     } catch (err) {
@@ -30,7 +25,6 @@ export const cleanupOutdatedBranches = async (ghPagesBaseDir: string) => {
 
 export const cleanupOutdatedReports = async (ghPagesBaseDir: string, maxReports: number) => {
     try {
-        console.log('maxReports', maxReports)
         const localBranches = (await fs.readdir(ghPagesBaseDir, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name)
 
         // branches
@@ -41,7 +35,7 @@ export const cleanupOutdatedReports = async (ghPagesBaseDir: string, maxReports:
 
             // report per branch
             for (const reportName of reports) {
-                const runs = (await fs.readdir(path.join(ghPagesBaseDir, localBranch), { withFileTypes: true }))
+                const runs = (await fs.readdir(path.join(ghPagesBaseDir, localBranch, reportName), { withFileTypes: true }))
                     .filter((d) => d.isDirectory())
                     .map((d) => d.name)
 
@@ -49,13 +43,12 @@ export const cleanupOutdatedReports = async (ghPagesBaseDir: string, maxReports:
                 if (runs.length > maxReports) {
                     runs.sort()
                     while (runs.length > maxReports) {
+                        console.log('deleting run', runs[0], runs.length)
                         await fs.rm(path.join(ghPagesBaseDir, localBranch, reportName, runs.shift() as string), {
                             recursive: true,
                             force: true,
                         })
                     }
-                } else {
-                    console.log('no need to cleanup branch', localBranch, reportName, runs.length)
                 }
             }
         }

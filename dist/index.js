@@ -40548,16 +40548,10 @@ const cleanupOutdatedBranches = async (ghPagesBaseDir) => {
             .split('\n')
             .filter((l) => l.includes(prefix))
             .map((l) => l.split(prefix)[1]);
-        console.log('remoteBranches:', remoteBranches);
         const localBranches = (await promises_.readdir(ghPagesBaseDir, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name);
-        console.log('localBranches:', localBranches);
         for (const localBranch of localBranches) {
             if (!remoteBranches.includes(localBranch)) {
-                console.log('deleting branch:', localBranch);
                 await promises_.rm(external_path_.join(ghPagesBaseDir, localBranch), { recursive: true, force: true });
-            }
-            else {
-                console.log('branch still exists:', localBranch);
             }
         }
     }
@@ -40567,7 +40561,6 @@ const cleanupOutdatedBranches = async (ghPagesBaseDir) => {
 };
 const cleanupOutdatedReports = async (ghPagesBaseDir, maxReports) => {
     try {
-        console.log('maxReports', maxReports);
         const localBranches = (await promises_.readdir(ghPagesBaseDir, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name);
         // branches
         for (const localBranch of localBranches) {
@@ -40576,21 +40569,19 @@ const cleanupOutdatedReports = async (ghPagesBaseDir, maxReports) => {
                 .map((d) => d.name);
             // report per branch
             for (const reportName of reports) {
-                const runs = (await promises_.readdir(external_path_.join(ghPagesBaseDir, localBranch), { withFileTypes: true }))
+                const runs = (await promises_.readdir(external_path_.join(ghPagesBaseDir, localBranch, reportName), { withFileTypes: true }))
                     .filter((d) => d.isDirectory())
                     .map((d) => d.name);
                 // run per report
                 if (runs.length > maxReports) {
                     runs.sort();
                     while (runs.length > maxReports) {
+                        console.log('deleting run', runs[0], runs.length);
                         await promises_.rm(external_path_.join(ghPagesBaseDir, localBranch, reportName, runs.shift()), {
                             recursive: true,
                             force: true,
                         });
                     }
-                }
-                else {
-                    console.log('no need to cleanup branch', localBranch, reportName, runs.length);
                 }
             }
         }
