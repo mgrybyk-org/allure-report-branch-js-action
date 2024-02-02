@@ -78,6 +78,7 @@ jobs:
         with:
           repository: gh-pages-dir
           branch: gh-pages
+          pull_args: --rebase -X ours
 
       - name: Comment PR with Allure Report link
         if: ${{ always() && github.event_name == 'pull_request' && steps.self_test.outputs.report_url }}
@@ -132,6 +133,7 @@ jobs:
         with:
           repository: gh-pages-dir
           branch: gh-pages
+          pull_args: --rebase -X ours
 
       - name: Comment PR with Allure Report link
         if: ${{ always() && github.event_name == 'pull_request' && steps.self_test.outputs.report_url }}
@@ -187,6 +189,7 @@ jobs:
         with:
           repository: gh-pages-dir
           branch: gh-pages
+          pull_args: --rebase -X ours
 
       - name: Comment PR with Allure Report link
         if: ${{ always() && github.event_name == 'pull_request' && steps.self_test.outputs.report_url }}

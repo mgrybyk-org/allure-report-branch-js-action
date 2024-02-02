@@ -44,6 +44,10 @@ outputs:
     description: 'Number of failed tests'
   test_result_total:
     description: 'Number of tests in total'
+  run_unique_id:
+    description: 'Name of the folder containing the generated Allure Report'
+  report_path:
+    description: 'Path to the folder containing the generated Allure Report relative to the repo root'
 runs:
   using: 'node20'
   main: 'dist/index.js'
