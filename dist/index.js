@@ -36936,6 +36936,8 @@ try {
     _actions_core__WEBPACK_IMPORTED_MODULE_1__.setOutput('test_result_passed', results.passed);
     _actions_core__WEBPACK_IMPORTED_MODULE_1__.setOutput('test_result_failed', results.failed);
     _actions_core__WEBPACK_IMPORTED_MODULE_1__.setOutput('test_result_total', results.total);
+    _actions_core__WEBPACK_IMPORTED_MODULE_1__.setOutput('run_unique_id', runUniqueId);
+    _actions_core__WEBPACK_IMPORTED_MODULE_1__.setOutput('report_path', reportDir);
     if (cleanupEnabled) {
         await (0,_src_cleanup_js__WEBPACK_IMPORTED_MODULE_7__/* .cleanupOutdatedBranches */ .B)(ghPagesBaseDir);
         await (0,_src_cleanup_js__WEBPACK_IMPORTED_MODULE_7__/* .cleanupOutdatedReports */ .g)(ghPagesBaseDir, maxReports);

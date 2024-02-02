@@ -118,6 +118,8 @@ try {
     core.setOutput('test_result_passed', results.passed)
     core.setOutput('test_result_failed', results.failed)
     core.setOutput('test_result_total', results.total)
+    core.setOutput('run_unique_id', runUniqueId)
+    core.setOutput('report_path', reportDir)
 
     if (cleanupEnabled) {
         await cleanupOutdatedBranches(ghPagesBaseDir)
