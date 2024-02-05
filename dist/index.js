@@ -36850,7 +36850,7 @@ __nccwpck_require__.a(module, async (__webpack_handle_async_dependencies__, __we
 
 
 
-const baseDir = 'allure-js-action';
+const baseDir = 'allure-action';
 const allureRelease = '2.27.0';
 const allureCliDir = 'allure-cli';
 const allureArchiveName = 'allure-commandline.tgz';
