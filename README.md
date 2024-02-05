@@ -2,14 +2,14 @@
 
 A **JavaScript** version of the Allure Report with history per branch (type: `node20`)
 
-**WARNING: Requires java to be installed in prior to using the action!**
+**Important: Requires java to be installed in prior to using the action!** 
 
-Regular version of the action: [allure-report-with-history-per-branch](https://github.com/marketplace/actions/allure-report-with-history-per-branch)
+Docker version of the action: [allure-report-with-history-per-branch](https://github.com/marketplace/actions/allure-report-with-history-per-branch)
 
 See examples:
 
 - [Allure History List](https://mgrybyk.github.io/allure-report-branch-js-action/allure-js-action/main/self-test/)
-- [Allure Report](https://mgrybyk.github.io/allure-report-branch-js-action/allure-js-action/main/self-test/5931206129_1692650191550/)
+- [Allure Report](https://mgrybyk.github.io/allure-report-branch-js-action/allure-js-action/main/self-test/7729626691_1706720670013/)
 - [Browse different branches](https://mgrybyk.github.io/allure-report-branch-js-action/allure-js-action/)
 - [Pull Request Comment Example](https://github.com/mgrybyk/allure-report-branch-js-action/pull/3)
 
@@ -75,10 +75,6 @@ steps:
       mode: recreate
 ```
 
-### Examples Repos
-
-- https://github.com/mgrybyk/webdriverio-devtools
-
 ## Screenshots
 
 ![Allure Reports History](docs/allure_history.png "Allure Reports History")
@@ -105,18 +101,13 @@ concurrency:
 
 ### Running in Windows or MacOS
 
-The `allure-report-branch-js-action` is designed as a JavaScript action wrapped with `docker` action because `allure` requires java and is shipped with bunch of java files.
-
-As far as `docker` action runs in linux environments only, it's required to do some extra steps for users running Windows and MacOS workflows. See [Types of actions](https://docs.github.com/en/actions/creating-actions/about-custom-actions#types-of-actions) for more details.
-
-- option 1: using upload/download artifacts. See [simple-elf/allure-report-action/issues/28#issuecomment-1139332329](https://github.com/simple-elf/allure-report-action/issues/28#issuecomment-1139332329)
-- option 2: use JS version of this action (raise an issue and I'll publish it). In this case you'll have to install Java and download download allure-commandline yourself.
+Make sure you have Java installed in prior to running the action.
+GitHub runners ubuntu-latest, windows-latest, macos-latest have Java installed so no action is required.
 
 ## Credits
 
-- [docker-java-node](https://github.com/timbru31/docker-java-node) for building Dockerimage with Java and NodeJS together
 - [thollander/actions-comment-pull-request](https://github.com/thollander/actions-comment-pull-request) for building Github Action that comments the linked PRs
 
-## Upcoming features
+## Planned features
 
-- cleanup old reports
+- cleanup `data.json` file per report. Raise an issue if you're interested!

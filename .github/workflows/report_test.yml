@@ -69,6 +69,8 @@ jobs:
           gh_pages: 'gh-pages-dir'
           report_dir: 'allure-results'
           list_dirs: ${{ github.ref == 'refs/heads/main' }}
+          branch_cleanup_enabled: ${{ github.ref == 'refs/heads/main' }}
+          max_reports: 9
 
       - name: Git Commit and Push Action
         uses: mgrybyk/git-commit-pull-push-action@v1
@@ -76,6 +78,7 @@ jobs:
         with:
           repository: gh-pages-dir
           branch: gh-pages
+          pull_args: --rebase -X ours
 
       - name: Comment PR with Allure Report link
         if: ${{ always() && github.event_name == 'pull_request' && steps.self_test.outputs.report_url }}
@@ -123,6 +126,7 @@ jobs:
           gh_pages: 'gh-pages-dir'
           report_dir: 'allure-results'
           list_dirs: ${{ github.ref == 'refs/heads/main' }}
+          max_reports: 0
 
       - name: Git Commit and Push Action
         uses: mgrybyk/git-commit-pull-push-action@v1
@@ -130,6 +134,7 @@ jobs:
         with:
           repository: gh-pages-dir
           branch: gh-pages
+          pull_args: --rebase -X ours
 
       - name: Comment PR with Allure Report link
         if: ${{ always() && github.event_name == 'pull_request' && steps.self_test.outputs.report_url }}
@@ -146,6 +151,7 @@ jobs:
     timeout-minutes: 180
     runs-on: macos-latest
     name: Build, Test, Report in macOS
+    needs: test-ubuntu
 
     steps:
       # To use this repository's private action,
@@ -177,6 +183,7 @@ jobs:
           gh_pages: 'gh-pages-dir'
           report_dir: 'allure-results'
           list_dirs: ${{ github.ref == 'refs/heads/main' }}
+          max_reports: 0
 
       - name: Git Commit and Push Action
         uses: mgrybyk/git-commit-pull-push-action@v1
@@ -184,6 +191,7 @@ jobs:
         with:
           repository: gh-pages-dir
           branch: gh-pages
+          pull_args: --rebase -X ours
 
       - name: Comment PR with Allure Report link
         if: ${{ always() && github.event_name == 'pull_request' && steps.self_test.outputs.report_url }}

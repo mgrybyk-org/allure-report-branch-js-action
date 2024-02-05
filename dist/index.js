@@ -36837,9 +36837,11 @@ __nccwpck_require__.a(module, async (__webpack_handle_async_dependencies__, __we
 /* harmony import */ var _actions_io__WEBPACK_IMPORTED_MODULE_3__ = __nccwpck_require__(7436);
 /* harmony import */ var _actions_io__WEBPACK_IMPORTED_MODULE_3___default = /*#__PURE__*/__nccwpck_require__.n(_actions_io__WEBPACK_IMPORTED_MODULE_3__);
 /* harmony import */ var _src_writeFolderListing_js__WEBPACK_IMPORTED_MODULE_4__ = __nccwpck_require__(4362);
-/* harmony import */ var _src_allure_js__WEBPACK_IMPORTED_MODULE_5__ = __nccwpck_require__(9030);
-/* harmony import */ var _src_helpers_js__WEBPACK_IMPORTED_MODULE_7__ = __nccwpck_require__(3015);
+/* harmony import */ var _src_allure_js__WEBPACK_IMPORTED_MODULE_5__ = __nccwpck_require__(7405);
+/* harmony import */ var _src_helpers_js__WEBPACK_IMPORTED_MODULE_8__ = __nccwpck_require__(3015);
 /* harmony import */ var _src_isFileExists_js__WEBPACK_IMPORTED_MODULE_6__ = __nccwpck_require__(2139);
+/* harmony import */ var _src_cleanup_js__WEBPACK_IMPORTED_MODULE_7__ = __nccwpck_require__(2193);
+
 
 
 
@@ -36849,7 +36851,7 @@ __nccwpck_require__.a(module, async (__webpack_handle_async_dependencies__, __we
 
 
 const baseDir = 'allure-js-action';
-const allureRelease = '2.26.0';
+const allureRelease = '2.27.0';
 const allureCliDir = 'allure-cli';
 const allureArchiveName = 'allure-commandline.tgz';
 try {
@@ -36859,8 +36861,12 @@ try {
     const ghPagesPath = _actions_core__WEBPACK_IMPORTED_MODULE_1__.getInput('gh_pages');
     const reportId = _actions_core__WEBPACK_IMPORTED_MODULE_1__.getInput('report_id');
     const listDirs = _actions_core__WEBPACK_IMPORTED_MODULE_1__.getInput('list_dirs') == 'true';
-    const branchName = (0,_src_helpers_js__WEBPACK_IMPORTED_MODULE_7__/* .getBranchName */ .L)(_actions_github__WEBPACK_IMPORTED_MODULE_2__.context.ref, _actions_github__WEBPACK_IMPORTED_MODULE_2__.context.payload.pull_request);
-    const reportBaseDir = path__WEBPACK_IMPORTED_MODULE_0__.join(ghPagesPath, baseDir, branchName, reportId);
+    const listDirsBranch = _actions_core__WEBPACK_IMPORTED_MODULE_1__.getInput('list_dirs_branch') == 'true';
+    const branchCleanupEnabled = _actions_core__WEBPACK_IMPORTED_MODULE_1__.getInput('branch_cleanup_enabled') == 'true';
+    const maxReports = parseInt(_actions_core__WEBPACK_IMPORTED_MODULE_1__.getInput('max_reports'), 10);
+    const branchName = (0,_src_helpers_js__WEBPACK_IMPORTED_MODULE_8__/* .getBranchName */ .L)(_actions_github__WEBPACK_IMPORTED_MODULE_2__.context.ref, _actions_github__WEBPACK_IMPORTED_MODULE_2__.context.payload.pull_request);
+    const ghPagesBaseDir = path__WEBPACK_IMPORTED_MODULE_0__.join(ghPagesPath, baseDir);
+    const reportBaseDir = path__WEBPACK_IMPORTED_MODULE_0__.join(ghPagesBaseDir, branchName, reportId);
     /**
      * `runId` is unique but won't change on job re-run
      * `runNumber` is not unique and resets from time to time
@@ -36871,8 +36877,8 @@ try {
     // urls
     const githubActionRunUrl = `https://github.com/${_actions_github__WEBPACK_IMPORTED_MODULE_2__.context.repo.owner}/${_actions_github__WEBPACK_IMPORTED_MODULE_2__.context.repo.repo}/actions/runs/${_actions_github__WEBPACK_IMPORTED_MODULE_2__.context.runId}`;
     const ghPagesUrl = `https://${_actions_github__WEBPACK_IMPORTED_MODULE_2__.context.repo.owner}.github.io/${_actions_github__WEBPACK_IMPORTED_MODULE_2__.context.repo.repo}`;
-    const ghPagesBaseDir = `${ghPagesUrl}/${baseDir}/${branchName}/${reportId}`.replaceAll(' ', '%20');
-    const ghPagesReportDir = `${ghPagesBaseDir}/${runUniqueId}`.replaceAll(' ', '%20');
+    const ghPagesBaseUrl = `${ghPagesUrl}/${baseDir}/${branchName}/${reportId}`.replaceAll(' ', '%20');
+    const ghPagesReportUrl = `${ghPagesBaseUrl}/${runUniqueId}`.replaceAll(' ', '%20');
     // log
     console.log({
         report_dir: sourceReportDir,
@@ -36884,8 +36890,11 @@ try {
         branchName,
         reportBaseDir,
         reportDir,
-        report_url: ghPagesReportDir,
+        report_url: ghPagesReportUrl,
         listDirs,
+        listDirsBranch,
+        branchCleanupEnabled,
+        maxReports,
     });
     if (!(await (0,_src_isFileExists_js__WEBPACK_IMPORTED_MODULE_6__/* .isFileExist */ .e)(ghPagesPath))) {
         throw new Error("Folder with gh-pages branch doesn't exist: " + ghPagesPath);
@@ -36904,6 +36913,8 @@ try {
             await (0,_src_writeFolderListing_js__WEBPACK_IMPORTED_MODULE_4__/* .writeFolderListing */ .l)(ghPagesPath, '.');
         }
         await (0,_src_writeFolderListing_js__WEBPACK_IMPORTED_MODULE_4__/* .writeFolderListing */ .l)(ghPagesPath, baseDir);
+    }
+    if (listDirsBranch) {
         await (0,_src_writeFolderListing_js__WEBPACK_IMPORTED_MODULE_4__/* .writeFolderListing */ .l)(ghPagesPath, path__WEBPACK_IMPORTED_MODULE_0__.join(baseDir, branchName));
     }
     // process allure report
@@ -36915,20 +36926,28 @@ try {
         runUniqueId,
         buildOrder: _actions_github__WEBPACK_IMPORTED_MODULE_2__.context.runId,
         buildUrl: githubActionRunUrl,
-        reportUrl: ghPagesReportDir,
+        reportUrl: ghPagesReportUrl,
     });
     await (0,_src_allure_js__WEBPACK_IMPORTED_MODULE_5__/* .spawnAllure */ .Mo)(allureCliDir, sourceReportDir, reportDir);
     const results = await (0,_src_allure_js__WEBPACK_IMPORTED_MODULE_5__/* .updateDataJson */ .V0)(reportBaseDir, reportDir, _actions_github__WEBPACK_IMPORTED_MODULE_2__.context.runId, runUniqueId);
     await (0,_src_allure_js__WEBPACK_IMPORTED_MODULE_5__/* .writeAllureListing */ .rF)(reportBaseDir);
     await (0,_src_allure_js__WEBPACK_IMPORTED_MODULE_5__/* .writeLastRunId */ .j9)(reportBaseDir, _actions_github__WEBPACK_IMPORTED_MODULE_2__.context.runId, runTimestamp);
     // outputs
-    _actions_core__WEBPACK_IMPORTED_MODULE_1__.setOutput('report_url', ghPagesReportDir);
-    _actions_core__WEBPACK_IMPORTED_MODULE_1__.setOutput('report_history_url', ghPagesBaseDir);
+    _actions_core__WEBPACK_IMPORTED_MODULE_1__.setOutput('report_url', ghPagesReportUrl);
+    _actions_core__WEBPACK_IMPORTED_MODULE_1__.setOutput('report_history_url', ghPagesBaseUrl);
     _actions_core__WEBPACK_IMPORTED_MODULE_1__.setOutput('test_result', results.testResult);
     _actions_core__WEBPACK_IMPORTED_MODULE_1__.setOutput('test_result_icon', (0,_src_allure_js__WEBPACK_IMPORTED_MODULE_5__/* .getTestResultIcon */ .RG)(results.testResult));
     _actions_core__WEBPACK_IMPORTED_MODULE_1__.setOutput('test_result_passed', results.passed);
     _actions_core__WEBPACK_IMPORTED_MODULE_1__.setOutput('test_result_failed', results.failed);
     _actions_core__WEBPACK_IMPORTED_MODULE_1__.setOutput('test_result_total', results.total);
+    _actions_core__WEBPACK_IMPORTED_MODULE_1__.setOutput('run_unique_id', runUniqueId);
+    _actions_core__WEBPACK_IMPORTED_MODULE_1__.setOutput('report_path', reportDir);
+    if (branchCleanupEnabled) {
+        await (0,_src_cleanup_js__WEBPACK_IMPORTED_MODULE_7__/* .cleanupOutdatedBranches */ .B)(ghPagesBaseDir);
+    }
+    if (maxReports > 0) {
+        await (0,_src_cleanup_js__WEBPACK_IMPORTED_MODULE_7__/* .cleanupOutdatedReports */ .g)(ghPagesBaseDir, maxReports);
+    }
 }
 catch (error) {
     _actions_core__WEBPACK_IMPORTED_MODULE_1__.setFailed(error.message);
@@ -36942,7 +36961,7 @@ __webpack_async_result__();
 
 /***/ }),
 
-/***/ 9030:
+/***/ 7405:
 /***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
 
 
@@ -36961,8 +36980,8 @@ __nccwpck_require__.d(__webpack_exports__, {
   "j9": () => (/* binding */ writeLastRunId)
 });
 
-;// CONCATENATED MODULE: external "child_process"
-const external_child_process_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("child_process");
+// EXTERNAL MODULE: external "child_process"
+var external_child_process_ = __nccwpck_require__(2081);
 // EXTERNAL MODULE: external "fs/promises"
 var promises_ = __nccwpck_require__(3292);
 // EXTERNAL MODULE: external "path"
@@ -40395,12 +40414,12 @@ const spawnAllure = async (allureCliDir, allureResultsDir, allureReportDir) => {
     const cliArgs = ['generate', '--clean', allureResultsDir, '-o', allureReportDir];
     let allureChildProcess;
     if (external_process_namespaceObject.platform === 'win32') {
-        allureChildProcess = external_child_process_namespaceObject.spawn('cmd', ['/c', external_path_.join(allureCliDir, 'bin', 'allure.bat'), ...cliArgs], {
+        allureChildProcess = external_child_process_.spawn('cmd', ['/c', external_path_.join(allureCliDir, 'bin', 'allure.bat'), ...cliArgs], {
             stdio: 'inherit',
         });
     }
     else {
-        allureChildProcess = external_child_process_namespaceObject.spawn(`${allureCliDir}/bin/allure`, cliArgs, { stdio: 'inherit' });
+        allureChildProcess = external_child_process_.spawn(`${allureCliDir}/bin/allure`, cliArgs, { stdio: 'inherit' });
     }
     const generation = new Promise((resolve, reject) => {
         allureChildProcess.once('error', reject);
@@ -40465,12 +40484,16 @@ const getTestResultIcon = (testResult) => {
 };
 const writeAllureListing = async (reportBaseDir) => promises_.writeFile(external_path_.join(reportBaseDir, 'index.html'), allureReport);
 const isAllureResultsOk = async (sourceReportDir) => {
+    const allureResultExt = ['.json', '.xml'];
     if (await (0,isFileExists/* isFileExist */.e)(sourceReportDir)) {
-        const listfiles = (await promises_.readdir(sourceReportDir, { withFileTypes: true })).filter((d) => d.isFile() && d.name.toLowerCase().endsWith('.json'));
+        const listfiles = (await promises_.readdir(sourceReportDir, { withFileTypes: true })).filter((d) => {
+            const fileName = d.name.toLowerCase();
+            return d.isFile() && allureResultExt.some((ext) => fileName.endsWith(ext));
+        });
         if (listfiles.length > 0) {
             return true;
         }
-        console.log('allure-results folder has no json files:', sourceReportDir);
+        console.log('allure-results folder has no json or xml files:', sourceReportDir);
         return false;
     }
     console.log("allure-results folder doesn't exist:", sourceReportDir);
@@ -40480,15 +40503,118 @@ const isAllureResultsOk = async (sourceReportDir) => {
 
 /***/ }),
 
+/***/ 2193:
+/***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
+
+
+// EXPORTS
+__nccwpck_require__.d(__webpack_exports__, {
+  "B": () => (/* binding */ cleanupOutdatedBranches),
+  "g": () => (/* binding */ cleanupOutdatedReports)
+});
+
+// EXTERNAL MODULE: external "path"
+var external_path_ = __nccwpck_require__(1017);
+// EXTERNAL MODULE: external "fs/promises"
+var promises_ = __nccwpck_require__(3292);
+// EXTERNAL MODULE: external "child_process"
+var external_child_process_ = __nccwpck_require__(2081);
+;// CONCATENATED MODULE: ./src/spawnProcess.ts
+
+const logError = (err, output) => {
+    console.log(output.join(''));
+    return err;
+};
+const spawnProcess = async (command, args, cwd) => {
+    const childProcess = external_child_process_.spawn(command, args, { cwd });
+    return new Promise((resolve, reject) => {
+        const output = [];
+        const r1 = childProcess.stdout?.on('data', (d) => output.push(d.toString()));
+        const r2 = childProcess.stderr?.on('data', (d) => output.push(d.toString()));
+        const p1 = new Promise((resolve) => (r1 ? r1.once('close', resolve) : resolve()));
+        const p2 = new Promise((resolve) => (r2 ? r2.once('close', resolve) : resolve()));
+        childProcess.once('error', (err) => reject(logError(err, output)));
+        childProcess.once('exit', async (code) => {
+            r1?.removeAllListeners('data');
+            r2?.removeAllListeners('data');
+            await p1;
+            await p2;
+            return code === 0 ? resolve(output.join('')) : reject(logError(code, output));
+        });
+    });
+};
+
+// EXTERNAL MODULE: ./src/helpers.ts
+var helpers = __nccwpck_require__(3015);
+;// CONCATENATED MODULE: ./src/cleanup.ts
+
+
+
+
+const cleanupOutdatedBranches = async (ghPagesBaseDir) => {
+    try {
+        const prefix = 'refs/heads/';
+        const lsRemote = await spawnProcess('git', ['ls-remote', '--heads']);
+        const remoteBranches = lsRemote
+            .split('\n')
+            .filter((l) => l.includes(prefix))
+            .map((l) => (0,helpers/* normalizeBranchName */.i)(l.split(prefix)[1]));
+        const localBranches = (await promises_.readdir(ghPagesBaseDir, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name);
+        for (const localBranch of localBranches) {
+            if (!remoteBranches.includes(localBranch)) {
+                await promises_.rm(external_path_.join(ghPagesBaseDir, localBranch), { recursive: true, force: true });
+            }
+        }
+    }
+    catch (err) {
+        console.error('cleanup outdated branches failed.', err);
+    }
+};
+const cleanupOutdatedReports = async (ghPagesBaseDir, maxReports) => {
+    try {
+        const localBranches = (await promises_.readdir(ghPagesBaseDir, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name);
+        // branches
+        for (const localBranch of localBranches) {
+            const reports = (await promises_.readdir(external_path_.join(ghPagesBaseDir, localBranch), { withFileTypes: true }))
+                .filter((d) => d.isDirectory())
+                .map((d) => d.name);
+            // report per branch
+            for (const reportName of reports) {
+                const runs = (await promises_.readdir(external_path_.join(ghPagesBaseDir, localBranch, reportName), { withFileTypes: true }))
+                    .filter((d) => d.isDirectory())
+                    .map((d) => d.name);
+                // run per report
+                if (runs.length > maxReports) {
+                    runs.sort();
+                    while (runs.length > maxReports) {
+                        await promises_.rm(external_path_.join(ghPagesBaseDir, localBranch, reportName, runs.shift()), {
+                            recursive: true,
+                            force: true,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    catch (err) {
+        console.error('cleanup outdated reports failed.', err);
+    }
+};
+
+
+/***/ }),
+
 /***/ 3015:
 /***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
 
 /* harmony export */ __nccwpck_require__.d(__webpack_exports__, {
-/* harmony export */   "L": () => (/* binding */ getBranchName)
+/* harmony export */   "L": () => (/* binding */ getBranchName),
+/* harmony export */   "i": () => (/* binding */ normalizeBranchName)
 /* harmony export */ });
+const normalizeBranchName = (branchName) => branchName.replaceAll('/', '_').replaceAll('.', '_');
 const getBranchName = (gitRef, pull_request) => {
     const branchName = pull_request ? pull_request.head.ref : gitRef.replace('refs/heads/', '');
-    return branchName.replaceAll('/', '_').replaceAll('.', '_');
+    return normalizeBranchName(branchName);
 };
 
 
@@ -40595,6 +40721,13 @@ module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("async_hooks"
 /***/ ((module) => {
 
 module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("buffer");
+
+/***/ }),
+
+/***/ 2081:
+/***/ ((module) => {
+
+module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("child_process");
 
 /***/ }),
 

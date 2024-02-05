@@ -21,6 +21,18 @@ inputs:
     description: 'Write index.html to the Github Action folders. Might cause concurrency issues!'
     required: false
     default: false
+  list_dirs_branch:
+    description: 'Write index.html to the report branch folder. Might cause concurrency issues!'
+    required: false
+    default: true
+  branch_cleanup_enabled:
+    description: 'Cleanup reports from deleted branches. Might cause concurrency issues!'
+    required: false
+    default: false
+  max_reports:
+    description: 'Max reports to keep per branch/report. Set to 0 to disable cleanup.'
+    required: false
+    default: 100
 outputs:
   report_url:
     description: 'Published Allure Report url'
@@ -36,6 +48,10 @@ outputs:
     description: 'Number of failed tests'
   test_result_total:
     description: 'Number of tests in total'
+  run_unique_id:
+    description: 'Name of the folder containing the generated Allure Report'
+  report_path:
+    description: 'Path to the folder containing the generated Allure Report relative to the repo root'
 runs:
   using: 'node20'
   main: 'dist/index.js'
