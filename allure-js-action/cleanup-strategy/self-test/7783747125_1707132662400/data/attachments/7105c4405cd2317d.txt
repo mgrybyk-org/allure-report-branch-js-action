@@ -1,0 +1,1 @@
+A snapshot doesn't exist at D:\a\allure-report-branch-js-action\allure-report-branch-js-action\tests\html-list.spec.ts-snapshots\html-list-1-chromium-win32.png, writing actual.
