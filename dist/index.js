@@ -36861,7 +36861,8 @@ try {
     const ghPagesPath = _actions_core__WEBPACK_IMPORTED_MODULE_1__.getInput('gh_pages');
     const reportId = _actions_core__WEBPACK_IMPORTED_MODULE_1__.getInput('report_id');
     const listDirs = _actions_core__WEBPACK_IMPORTED_MODULE_1__.getInput('list_dirs') == 'true';
-    const cleanupEnabled = _actions_core__WEBPACK_IMPORTED_MODULE_1__.getInput('cleanup_enabled') == 'true';
+    const listDirsBranch = _actions_core__WEBPACK_IMPORTED_MODULE_1__.getInput('list_dirs_branch') == 'true';
+    const branchCleanupEnabled = _actions_core__WEBPACK_IMPORTED_MODULE_1__.getInput('branch_cleanup_enabled') == 'true';
     const maxReports = parseInt(_actions_core__WEBPACK_IMPORTED_MODULE_1__.getInput('max_reports'), 10);
     const branchName = (0,_src_helpers_js__WEBPACK_IMPORTED_MODULE_8__/* .getBranchName */ .L)(_actions_github__WEBPACK_IMPORTED_MODULE_2__.context.ref, _actions_github__WEBPACK_IMPORTED_MODULE_2__.context.payload.pull_request);
     const ghPagesBaseDir = path__WEBPACK_IMPORTED_MODULE_0__.join(ghPagesPath, baseDir);
@@ -36891,7 +36892,8 @@ try {
         reportDir,
         report_url: ghPagesReportUrl,
         listDirs,
-        cleanupEnabled,
+        listDirsBranch,
+        branchCleanupEnabled,
         maxReports,
     });
     if (!(await (0,_src_isFileExists_js__WEBPACK_IMPORTED_MODULE_6__/* .isFileExist */ .e)(ghPagesPath))) {
@@ -36911,6 +36913,8 @@ try {
             await (0,_src_writeFolderListing_js__WEBPACK_IMPORTED_MODULE_4__/* .writeFolderListing */ .l)(ghPagesPath, '.');
         }
         await (0,_src_writeFolderListing_js__WEBPACK_IMPORTED_MODULE_4__/* .writeFolderListing */ .l)(ghPagesPath, baseDir);
+    }
+    if (listDirsBranch) {
         await (0,_src_writeFolderListing_js__WEBPACK_IMPORTED_MODULE_4__/* .writeFolderListing */ .l)(ghPagesPath, path__WEBPACK_IMPORTED_MODULE_0__.join(baseDir, branchName));
     }
     // process allure report
@@ -36938,8 +36942,10 @@ try {
     _actions_core__WEBPACK_IMPORTED_MODULE_1__.setOutput('test_result_total', results.total);
     _actions_core__WEBPACK_IMPORTED_MODULE_1__.setOutput('run_unique_id', runUniqueId);
     _actions_core__WEBPACK_IMPORTED_MODULE_1__.setOutput('report_path', reportDir);
-    if (cleanupEnabled) {
+    if (branchCleanupEnabled) {
         await (0,_src_cleanup_js__WEBPACK_IMPORTED_MODULE_7__/* .cleanupOutdatedBranches */ .B)(ghPagesBaseDir);
+    }
+    if (maxReports > 0) {
         await (0,_src_cleanup_js__WEBPACK_IMPORTED_MODULE_7__/* .cleanupOutdatedReports */ .g)(ghPagesBaseDir, maxReports);
     }
 }
