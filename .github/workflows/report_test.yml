@@ -126,6 +126,7 @@ jobs:
           gh_pages: 'gh-pages-dir'
           report_dir: 'allure-results'
           list_dirs: ${{ github.ref == 'refs/heads/main' }}
+          max_reports: 0
 
       - name: Git Commit and Push Action
         uses: mgrybyk/git-commit-pull-push-action@v1
@@ -182,6 +183,7 @@ jobs:
           gh_pages: 'gh-pages-dir'
           report_dir: 'allure-results'
           list_dirs: ${{ github.ref == 'refs/heads/main' }}
+          max_reports: 0
 
       - name: Git Commit and Push Action
         uses: mgrybyk/git-commit-pull-push-action@v1
