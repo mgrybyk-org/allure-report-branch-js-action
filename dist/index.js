@@ -36861,6 +36861,7 @@ try {
     const ghPagesPath = _actions_core__WEBPACK_IMPORTED_MODULE_1__.getInput('gh_pages');
     const reportId = _actions_core__WEBPACK_IMPORTED_MODULE_1__.getInput('report_id');
     const listDirs = _actions_core__WEBPACK_IMPORTED_MODULE_1__.getInput('list_dirs') == 'true';
+    const listDirsBranch = _actions_core__WEBPACK_IMPORTED_MODULE_1__.getInput('list_dirs_branch') == 'true';
     const cleanupEnabled = _actions_core__WEBPACK_IMPORTED_MODULE_1__.getInput('cleanup_enabled') == 'true';
     const maxReports = parseInt(_actions_core__WEBPACK_IMPORTED_MODULE_1__.getInput('max_reports'), 10);
     const branchName = (0,_src_helpers_js__WEBPACK_IMPORTED_MODULE_8__/* .getBranchName */ .L)(_actions_github__WEBPACK_IMPORTED_MODULE_2__.context.ref, _actions_github__WEBPACK_IMPORTED_MODULE_2__.context.payload.pull_request);
@@ -36891,6 +36892,7 @@ try {
         reportDir,
         report_url: ghPagesReportUrl,
         listDirs,
+        listDirsBranch,
         cleanupEnabled,
         maxReports,
     });
@@ -36911,6 +36913,8 @@ try {
             await (0,_src_writeFolderListing_js__WEBPACK_IMPORTED_MODULE_4__/* .writeFolderListing */ .l)(ghPagesPath, '.');
         }
         await (0,_src_writeFolderListing_js__WEBPACK_IMPORTED_MODULE_4__/* .writeFolderListing */ .l)(ghPagesPath, baseDir);
+    }
+    if (listDirsBranch) {
         await (0,_src_writeFolderListing_js__WEBPACK_IMPORTED_MODULE_4__/* .writeFolderListing */ .l)(ghPagesPath, path__WEBPACK_IMPORTED_MODULE_0__.join(baseDir, branchName));
     }
     // process allure report
@@ -36940,6 +36944,8 @@ try {
     _actions_core__WEBPACK_IMPORTED_MODULE_1__.setOutput('report_path', reportDir);
     if (cleanupEnabled) {
         await (0,_src_cleanup_js__WEBPACK_IMPORTED_MODULE_7__/* .cleanupOutdatedBranches */ .B)(ghPagesBaseDir);
+    }
+    if (maxReports > 0) {
         await (0,_src_cleanup_js__WEBPACK_IMPORTED_MODULE_7__/* .cleanupOutdatedReports */ .g)(ghPagesBaseDir, maxReports);
     }
 }

@@ -21,12 +21,16 @@ inputs:
     description: 'Write index.html to the Github Action folders. Might cause concurrency issues!'
     required: false
     default: false
+  list_dirs_branch:
+    description: 'Write index.html to the report branch folder. Might cause concurrency issues!'
+    required: false
+    default: true
   cleanup_enabled:
-    description: 'Cleanup reports from deleted branches or if reports numbers is too big'
+    description: 'Cleanup reports from deleted branches or if reports numbers is too big. Might cause concurrency issues!'
     required: false
     default: false
   max_reports:
-    description: 'Max reports to keep per branch/report. Make sure to enable cleanup_enabled'
+    description: 'Max reports to keep per branch/report. Set to 0 to disable cleanup.'
     required: false
     default: 100
 outputs:
