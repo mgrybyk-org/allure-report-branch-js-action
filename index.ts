@@ -34,7 +34,7 @@ try {
     const reportId = core.getInput('report_id')
     const listDirs = core.getInput('list_dirs') == 'true'
     const listDirsBranch = core.getInput('list_dirs_branch') == 'true'
-    const cleanupEnabled = core.getInput('cleanup_enabled') == 'true'
+    const branchCleanupEnabled = core.getInput('branch_cleanup_enabled') == 'true'
     const maxReports = parseInt(core.getInput('max_reports'), 10)
     const branchName = getBranchName(github.context.ref, github.context.payload.pull_request)
     const ghPagesBaseDir = path.join(ghPagesPath, baseDir)
@@ -68,7 +68,7 @@ try {
         report_url: ghPagesReportUrl,
         listDirs,
         listDirsBranch,
-        cleanupEnabled,
+        branchCleanupEnabled,
         maxReports,
     })
 
@@ -125,7 +125,7 @@ try {
     core.setOutput('run_unique_id', runUniqueId)
     core.setOutput('report_path', reportDir)
 
-    if (cleanupEnabled) {
+    if (branchCleanupEnabled) {
         await cleanupOutdatedBranches(ghPagesBaseDir)
     }
     if (maxReports > 0) {
