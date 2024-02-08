@@ -1,0 +1,24 @@
+<!-- report-action -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Redirect to latest</title>
+  </head>
+
+  <body>
+    <h1>Redirecting to the latest run...</h1>
+
+    <script>
+      fetch(`./lastRun.json?t=${Date.now()}`)
+        .then((response) => response.ok && response.json())
+        .then((json) => {
+          if (!json) {
+            return
+          }
+
+          window.location.replace(window.location.pathname.replace('latest.html', `${json.runId}_${json.runTimestamp}`))
+        })
+    </script>
+  </body>
+</html>
