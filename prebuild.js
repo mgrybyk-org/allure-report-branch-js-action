@@ -3,6 +3,7 @@ import fs from 'fs/promises'
 const tasks = [
   { report: 'reports/allure/index.html', src: 'src/report_allure.ts', name: 'allureReport' },
   { report: 'reports/html/index.html', src: 'src/report_listing.ts', name: 'listingReport' },
+  { report: 'reports/html/latest.html', src: 'src/report_latest.ts', name: 'latestReport' },
 ]
 
 const buildString = (name, report) => [

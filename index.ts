@@ -19,6 +19,7 @@ import {
 import { getBranchName } from './src/helpers.js'
 import { isFileExist } from './src/isFileExists.js'
 import { cleanupOutdatedBranches, cleanupOutdatedReports } from './src/cleanup.js'
+import { writeLatestReport } from './src/writeLatest.js'
 
 const baseDir = 'allure-action'
 const allureRelease = '2.27.0'
@@ -113,6 +114,7 @@ try {
     const results = await updateDataJson(reportBaseDir, reportDir, github.context.runId, runUniqueId)
     await writeAllureListing(reportBaseDir)
     await writeLastRunId(reportBaseDir, github.context.runId, runTimestamp)
+    await writeLatestReport(reportBaseDir)
 
     // outputs
     core.setOutput('report_url', ghPagesReportUrl)
