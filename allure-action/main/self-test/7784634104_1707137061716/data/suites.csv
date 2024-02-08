@@ -1,3 +1,0 @@
-"Status","Start Time","Stop Time","Duration in ms","Parent Suite","Suite","Sub Suite","Test Class","Test Method","Name","Description"
-"passed","Mon Feb 05 12:44:20 UTC 2024","Mon Feb 05 12:44:20 UTC 2024","740","chromium","allure-list.spec.ts","","","","allure list",""
-"passed","Mon Feb 05 12:44:20 UTC 2024","Mon Feb 05 12:44:20 UTC 2024","719","chromium","html-list.spec.ts","","","","html list",""
