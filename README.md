@@ -8,9 +8,9 @@ Docker version of the action: [allure-report-with-history-per-branch](https://gi
 
 See examples:
 
-- [Allure History List](https://mgrybyk.github.io/allure-report-branch-js-action/allure-js-action/main/self-test/)
-- [Allure Report](https://mgrybyk.github.io/allure-report-branch-js-action/allure-js-action/main/self-test/7729626691_1706720670013/)
-- [Browse different branches](https://mgrybyk.github.io/allure-report-branch-js-action/allure-js-action/)
+- [Allure History List](https://mgrybyk.github.io/allure-report-branch-js-action/allure-action/main/self-test/)
+- [Allure Report](https://mgrybyk.github.io/allure-report-branch-js-action/allure-action/main/self-test/latest.html)
+- [Browse different branches](https://mgrybyk.github.io/allure-report-branch-js-action/allure-action/)
 - [Pull Request Comment Example](https://github.com/mgrybyk/allure-report-branch-js-action/pull/3)
 
 *Compatible with [HTML Trend Report Action](https://github.com/marketplace/actions/publish-report-per-branch).*
