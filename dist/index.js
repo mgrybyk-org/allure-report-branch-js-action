@@ -10222,12 +10222,17 @@ createToken('XRANGELOOSE', `^${src[t.GTLT]}\\s*${src[t.XRANGEPLAINLOOSE]}$`)
 
 // Coercion.
 // Extract anything that could conceivably be a part of a valid semver
-createToken('COERCE', `${'(^|[^\\d])' +
+createToken('COERCEPLAIN', `${'(^|[^\\d])' +
               '(\\d{1,'}${MAX_SAFE_COMPONENT_LENGTH}})` +
               `(?:\\.(\\d{1,${MAX_SAFE_COMPONENT_LENGTH}}))?` +
-              `(?:\\.(\\d{1,${MAX_SAFE_COMPONENT_LENGTH}}))?` +
+              `(?:\\.(\\d{1,${MAX_SAFE_COMPONENT_LENGTH}}))?`)
+createToken('COERCE', `${src[t.COERCEPLAIN]}(?:$|[^\\d])`)
+createToken('COERCEFULL', src[t.COERCEPLAIN] +
+              `(?:${src[t.PRERELEASE]})?` +
+              `(?:${src[t.BUILD]})?` +
               `(?:$|[^\\d])`)
 createToken('COERCERTL', src[t.COERCE], true)
+createToken('COERCERTLFULL', src[t.COERCEFULL], true)
 
 // Tilde ranges.
 // Meaning is "reasonably at or greater than"
@@ -25200,6 +25205,9 @@ function httpRedirectFetch (fetchParams, response) {
     // https://fetch.spec.whatwg.org/#cors-non-wildcard-request-header-name
     request.headersList.delete('authorization')
 
+    // https://fetch.spec.whatwg.org/#authentication-entries
+    request.headersList.delete('proxy-authorization', true)
+
     // "Cookie" and "Host" are forbidden request-headers, which undici doesn't implement.
     request.headersList.delete('cookie')
     request.headersList.delete('host')
@@ -36909,6 +36917,13 @@ try {
     await (0,_src_allure_js__WEBPACK_IMPORTED_MODULE_5__/* .extractAllure */ .Ij)(allureCliDir, allureArchiveName);
     // action
     await _actions_io__WEBPACK_IMPORTED_MODULE_3__.mkdirP(reportBaseDir);
+    // cleanup (should be before the folder listing)
+    if (branchCleanupEnabled) {
+        await (0,_src_cleanup_js__WEBPACK_IMPORTED_MODULE_7__/* .cleanupOutdatedBranches */ .B)(ghPagesBaseDir);
+    }
+    if (maxReports > 0) {
+        await (0,_src_cleanup_js__WEBPACK_IMPORTED_MODULE_7__/* .cleanupOutdatedReports */ .g)(ghPagesBaseDir, maxReports);
+    }
     // folder listing
     if (listDirs) {
         if (await (0,_src_writeFolderListing_js__WEBPACK_IMPORTED_MODULE_4__/* .shouldWriteRootHtml */ .z)(ghPagesPath)) {
@@ -36945,12 +36960,6 @@ try {
     _actions_core__WEBPACK_IMPORTED_MODULE_1__.setOutput('test_result_total', results.total);
     _actions_core__WEBPACK_IMPORTED_MODULE_1__.setOutput('run_unique_id', runUniqueId);
     _actions_core__WEBPACK_IMPORTED_MODULE_1__.setOutput('report_path', reportDir);
-    if (branchCleanupEnabled) {
-        await (0,_src_cleanup_js__WEBPACK_IMPORTED_MODULE_7__/* .cleanupOutdatedBranches */ .B)(ghPagesBaseDir);
-    }
-    if (maxReports > 0) {
-        await (0,_src_cleanup_js__WEBPACK_IMPORTED_MODULE_7__/* .cleanupOutdatedReports */ .g)(ghPagesBaseDir, maxReports);
-    }
 }
 catch (error) {
     _actions_core__WEBPACK_IMPORTED_MODULE_1__.setFailed(error.message);

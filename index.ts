@@ -88,6 +88,14 @@ try {
     // action
     await io.mkdirP(reportBaseDir)
 
+    // cleanup (should be before the folder listing)
+    if (branchCleanupEnabled) {
+        await cleanupOutdatedBranches(ghPagesBaseDir)
+    }
+    if (maxReports > 0) {
+        await cleanupOutdatedReports(ghPagesBaseDir, maxReports)
+    }
+
     // folder listing
     if (listDirs) {
         if (await shouldWriteRootHtml(ghPagesPath)) {
@@ -126,13 +134,6 @@ try {
     core.setOutput('test_result_total', results.total)
     core.setOutput('run_unique_id', runUniqueId)
     core.setOutput('report_path', reportDir)
-
-    if (branchCleanupEnabled) {
-        await cleanupOutdatedBranches(ghPagesBaseDir)
-    }
-    if (maxReports > 0) {
-        await cleanupOutdatedReports(ghPagesBaseDir, maxReports)
-    }
 } catch (error) {
     core.setFailed(error.message)
 } finally {
