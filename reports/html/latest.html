@@ -17,7 +17,16 @@
             return
           }
 
-          window.location.replace(window.location.pathname.replace('latest.html', `${json.runId}_${json.runTimestamp}`))
+          const ending = window.location.pathname.endsWith('latest.html')
+            ? 'latest.html'
+            : window.location.pathname.endsWith('latest')
+              ? 'latest'
+              : null
+          if (ending) {
+            window.location.replace(window.location.pathname.replace(ending, `${json.runId}_${json.runTimestamp}`))
+          } else {
+            console.error('something went wrong')
+          }
         })
     </script>
   </body>
