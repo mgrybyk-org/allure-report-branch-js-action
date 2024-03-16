@@ -1830,7 +1830,7 @@ class HttpClient {
         if (this._keepAlive && useProxy) {
             agent = this._proxyAgent;
         }
-        if (this._keepAlive && !useProxy) {
+        if (!useProxy) {
             agent = this._agent;
         }
         // if agent is already assigned use that agent.
@@ -1862,15 +1862,11 @@ class HttpClient {
             agent = tunnelAgent(agentOptions);
             this._proxyAgent = agent;
         }
-        // if reusing agent across request and tunneling agent isn't assigned create a new agent
-        if (this._keepAlive && !agent) {
+        // if tunneling agent isn't assigned create a new agent
+        if (!agent) {
             const options = { keepAlive: this._keepAlive, maxSockets };
             agent = usingSsl ? new https.Agent(options) : new http.Agent(options);
             this._agent = agent;
-        }
-        // if not using private agent and tunnel agent isn't setup then use global agent
-        if (!agent) {
-            agent = usingSsl ? https.globalAgent : http.globalAgent;
         }
         if (usingSsl && this._ignoreSslError) {
             // we don't want to set NODE_TLS_REJECT_UNAUTHORIZED=0 since that will affect request for entire process
@@ -3392,7 +3388,7 @@ __export(dist_src_exports, {
 module.exports = __toCommonJS(dist_src_exports);
 
 // pkg/dist-src/version.js
-var VERSION = "9.1.5";
+var VERSION = "9.2.1";
 
 // pkg/dist-src/normalize-paginated-list-response.js
 function normalizePaginatedListResponse(response) {
@@ -3553,6 +3549,8 @@ var paginatingEndpoints = [
   "GET /orgs/{org}/members/{username}/codespaces",
   "GET /orgs/{org}/migrations",
   "GET /orgs/{org}/migrations/{migration_id}/repositories",
+  "GET /orgs/{org}/organization-roles/{role_id}/teams",
+  "GET /orgs/{org}/organization-roles/{role_id}/users",
   "GET /orgs/{org}/outside_collaborators",
   "GET /orgs/{org}/packages",
   "GET /orgs/{org}/packages/{package_type}/{package_name}/versions",
@@ -3788,7 +3786,7 @@ __export(dist_src_exports, {
 module.exports = __toCommonJS(dist_src_exports);
 
 // pkg/dist-src/version.js
-var VERSION = "10.2.0";
+var VERSION = "10.4.1";
 
 // pkg/dist-src/generated/endpoints.js
 var Endpoints = {
@@ -3915,6 +3913,9 @@ var Endpoints = {
       "GET /repos/{owner}/{repo}/actions/permissions/selected-actions"
     ],
     getArtifact: ["GET /repos/{owner}/{repo}/actions/artifacts/{artifact_id}"],
+    getCustomOidcSubClaimForRepo: [
+      "GET /repos/{owner}/{repo}/actions/oidc/customization/sub"
+    ],
     getEnvironmentPublicKey: [
       "GET /repositories/{repository_id}/environments/{environment_name}/secrets/public-key"
     ],
@@ -4067,6 +4068,9 @@ var Endpoints = {
     setCustomLabelsForSelfHostedRunnerForRepo: [
       "PUT /repos/{owner}/{repo}/actions/runners/{runner_id}/labels"
     ],
+    setCustomOidcSubClaimForRepo: [
+      "PUT /repos/{owner}/{repo}/actions/oidc/customization/sub"
+    ],
     setGithubActionsDefaultWorkflowPermissionsOrganization: [
       "PUT /orgs/{org}/actions/permissions/workflow"
     ],
@@ -4136,6 +4140,7 @@ var Endpoints = {
     listWatchersForRepo: ["GET /repos/{owner}/{repo}/subscribers"],
     markNotificationsAsRead: ["PUT /notifications"],
     markRepoNotificationsAsRead: ["PUT /repos/{owner}/{repo}/notifications"],
+    markThreadAsDone: ["DELETE /notifications/threads/{thread_id}"],
     markThreadAsRead: ["PATCH /notifications/threads/{thread_id}"],
     setRepoSubscription: ["PUT /repos/{owner}/{repo}/subscription"],
     setThreadSubscription: [
@@ -4412,10 +4417,10 @@ var Endpoints = {
     updateForAuthenticatedUser: ["PATCH /user/codespaces/{codespace_name}"]
   },
   copilot: {
-    addCopilotForBusinessSeatsForTeams: [
+    addCopilotSeatsForTeams: [
       "POST /orgs/{org}/copilot/billing/selected_teams"
     ],
-    addCopilotForBusinessSeatsForUsers: [
+    addCopilotSeatsForUsers: [
       "POST /orgs/{org}/copilot/billing/selected_users"
     ],
     cancelCopilotSeatAssignmentForTeams: [
@@ -4728,9 +4733,23 @@ var Endpoints = {
       }
     ]
   },
+  oidc: {
+    getOidcCustomSubTemplateForOrg: [
+      "GET /orgs/{org}/actions/oidc/customization/sub"
+    ],
+    updateOidcCustomSubTemplateForOrg: [
+      "PUT /orgs/{org}/actions/oidc/customization/sub"
+    ]
+  },
   orgs: {
     addSecurityManagerTeam: [
       "PUT /orgs/{org}/security-managers/teams/{team_slug}"
+    ],
+    assignTeamToOrgRole: [
+      "PUT /orgs/{org}/organization-roles/teams/{team_slug}/{role_id}"
+    ],
+    assignUserToOrgRole: [
+      "PUT /orgs/{org}/organization-roles/users/{username}/{role_id}"
     ],
     blockUser: ["PUT /orgs/{org}/blocks/{username}"],
     cancelInvitation: ["DELETE /orgs/{org}/invitations/{invitation_id}"],
@@ -4740,6 +4759,7 @@ var Endpoints = {
     convertMemberToOutsideCollaborator: [
       "PUT /orgs/{org}/outside_collaborators/{username}"
     ],
+    createCustomOrganizationRole: ["POST /orgs/{org}/organization-roles"],
     createInvitation: ["POST /orgs/{org}/invitations"],
     createOrUpdateCustomProperties: ["PATCH /orgs/{org}/properties/schema"],
     createOrUpdateCustomPropertiesValuesForRepos: [
@@ -4750,6 +4770,9 @@ var Endpoints = {
     ],
     createWebhook: ["POST /orgs/{org}/hooks"],
     delete: ["DELETE /orgs/{org}"],
+    deleteCustomOrganizationRole: [
+      "DELETE /orgs/{org}/organization-roles/{role_id}"
+    ],
     deleteWebhook: ["DELETE /orgs/{org}/hooks/{hook_id}"],
     enableOrDisableSecurityProductOnAllOrgRepos: [
       "POST /orgs/{org}/{security_product}/{enablement}"
@@ -4761,6 +4784,7 @@ var Endpoints = {
     ],
     getMembershipForAuthenticatedUser: ["GET /user/memberships/orgs/{org}"],
     getMembershipForUser: ["GET /orgs/{org}/memberships/{username}"],
+    getOrgRole: ["GET /orgs/{org}/organization-roles/{role_id}"],
     getWebhook: ["GET /orgs/{org}/hooks/{hook_id}"],
     getWebhookConfigForOrg: ["GET /orgs/{org}/hooks/{hook_id}/config"],
     getWebhookDelivery: [
@@ -4776,6 +4800,12 @@ var Endpoints = {
     listInvitationTeams: ["GET /orgs/{org}/invitations/{invitation_id}/teams"],
     listMembers: ["GET /orgs/{org}/members"],
     listMembershipsForAuthenticatedUser: ["GET /user/memberships/orgs"],
+    listOrgRoleTeams: ["GET /orgs/{org}/organization-roles/{role_id}/teams"],
+    listOrgRoleUsers: ["GET /orgs/{org}/organization-roles/{role_id}/users"],
+    listOrgRoles: ["GET /orgs/{org}/organization-roles"],
+    listOrganizationFineGrainedPermissions: [
+      "GET /orgs/{org}/organization-fine-grained-permissions"
+    ],
     listOutsideCollaborators: ["GET /orgs/{org}/outside_collaborators"],
     listPatGrantRepositories: [
       "GET /orgs/{org}/personal-access-tokens/{pat_id}/repositories"
@@ -4790,6 +4820,9 @@ var Endpoints = {
     listSecurityManagerTeams: ["GET /orgs/{org}/security-managers"],
     listWebhookDeliveries: ["GET /orgs/{org}/hooks/{hook_id}/deliveries"],
     listWebhooks: ["GET /orgs/{org}/hooks"],
+    patchCustomOrganizationRole: [
+      "PATCH /orgs/{org}/organization-roles/{role_id}"
+    ],
     pingWebhook: ["POST /orgs/{org}/hooks/{hook_id}/pings"],
     redeliverWebhookDelivery: [
       "POST /orgs/{org}/hooks/{hook_id}/deliveries/{delivery_id}/attempts"
@@ -4813,6 +4846,18 @@ var Endpoints = {
     ],
     reviewPatGrantRequestsInBulk: [
       "POST /orgs/{org}/personal-access-token-requests"
+    ],
+    revokeAllOrgRolesTeam: [
+      "DELETE /orgs/{org}/organization-roles/teams/{team_slug}"
+    ],
+    revokeAllOrgRolesUser: [
+      "DELETE /orgs/{org}/organization-roles/users/{username}"
+    ],
+    revokeOrgRoleTeam: [
+      "DELETE /orgs/{org}/organization-roles/teams/{team_slug}/{role_id}"
+    ],
+    revokeOrgRoleUser: [
+      "DELETE /orgs/{org}/organization-roles/users/{username}/{role_id}"
     ],
     setMembershipForUser: ["PUT /orgs/{org}/memberships/{username}"],
     setPublicMembershipForAuthenticatedUser: [
@@ -5104,6 +5149,9 @@ var Endpoints = {
       {},
       { mapToData: "users" }
     ],
+    cancelPagesDeployment: [
+      "POST /repos/{owner}/{repo}/pages/deployments/{pages_deployment_id}/cancel"
+    ],
     checkAutomatedSecurityFixes: [
       "GET /repos/{owner}/{repo}/automated-security-fixes"
     ],
@@ -5139,12 +5187,15 @@ var Endpoints = {
     createForAuthenticatedUser: ["POST /user/repos"],
     createFork: ["POST /repos/{owner}/{repo}/forks"],
     createInOrg: ["POST /orgs/{org}/repos"],
+    createOrUpdateCustomPropertiesValues: [
+      "PATCH /repos/{owner}/{repo}/properties/values"
+    ],
     createOrUpdateEnvironment: [
       "PUT /repos/{owner}/{repo}/environments/{environment_name}"
     ],
     createOrUpdateFileContents: ["PUT /repos/{owner}/{repo}/contents/{path}"],
     createOrgRuleset: ["POST /orgs/{org}/rulesets"],
-    createPagesDeployment: ["POST /repos/{owner}/{repo}/pages/deployment"],
+    createPagesDeployment: ["POST /repos/{owner}/{repo}/pages/deployments"],
     createPagesSite: ["POST /repos/{owner}/{repo}/pages"],
     createRelease: ["POST /repos/{owner}/{repo}/releases"],
     createRepoRuleset: ["POST /repos/{owner}/{repo}/rulesets"],
@@ -5297,6 +5348,9 @@ var Endpoints = {
     getOrgRulesets: ["GET /orgs/{org}/rulesets"],
     getPages: ["GET /repos/{owner}/{repo}/pages"],
     getPagesBuild: ["GET /repos/{owner}/{repo}/pages/builds/{build_id}"],
+    getPagesDeployment: [
+      "GET /repos/{owner}/{repo}/pages/deployments/{pages_deployment_id}"
+    ],
     getPagesHealthCheck: ["GET /repos/{owner}/{repo}/pages/health"],
     getParticipationStats: ["GET /repos/{owner}/{repo}/stats/participation"],
     getPullRequestReviewProtection: [
@@ -5507,6 +5561,9 @@ var Endpoints = {
     ]
   },
   securityAdvisories: {
+    createFork: [
+      "POST /repos/{owner}/{repo}/security-advisories/{ghsa_id}/forks"
+    ],
     createPrivateVulnerabilityReport: [
       "POST /repos/{owner}/{repo}/security-advisories/reports"
     ],
@@ -5996,7 +6053,7 @@ var import_endpoint = __nccwpck_require__(9440);
 var import_universal_user_agent = __nccwpck_require__(5030);
 
 // pkg/dist-src/version.js
-var VERSION = "8.1.6";
+var VERSION = "8.2.0";
 
 // pkg/dist-src/is-plain-object.js
 function isPlainObject(value) {
@@ -6140,11 +6197,17 @@ async function getResponseData(response) {
 function toErrorMessage(data) {
   if (typeof data === "string")
     return data;
+  let suffix;
+  if ("documentation_url" in data) {
+    suffix = ` - ${data.documentation_url}`;
+  } else {
+    suffix = "";
+  }
   if ("message" in data) {
     if (Array.isArray(data.errors)) {
-      return `${data.message}: ${data.errors.map(JSON.stringify).join(", ")}`;
+      return `${data.message}: ${data.errors.map(JSON.stringify).join(", ")}${suffix}`;
     }
-    return data.message;
+    return `${data.message}${suffix}`;
   }
   return `Unknown error: ${JSON.stringify(data)}`;
 }
@@ -10299,8 +10362,8 @@ const FIFO = __nccwpck_require__(2958)
 
 /* eslint-disable no-multi-spaces */
 
-// 27 bits used total (4 from shared, 13 from read, and 10 from write)
-const MAX = ((1 << 27) - 1)
+// 28 bits used total (4 from shared, 14 from read, and 10 from write)
+const MAX = ((1 << 28) - 1)
 
 // Shared state
 const OPENING       = 0b0001
@@ -10312,25 +10375,27 @@ const NOT_OPENING = MAX ^ OPENING
 const NOT_PREDESTROYING = MAX ^ PREDESTROYING
 
 // Read state (4 bit offset from shared state)
-const READ_ACTIVE           = 0b0000000000001 << 4
-const READ_UPDATING         = 0b0000000000010 << 4
-const READ_PRIMARY          = 0b0000000000100 << 4
-const READ_QUEUED           = 0b0000000001000 << 4
-const READ_RESUMED          = 0b0000000010000 << 4
-const READ_PIPE_DRAINED     = 0b0000000100000 << 4
-const READ_ENDING           = 0b0000001000000 << 4
-const READ_EMIT_DATA        = 0b0000010000000 << 4
-const READ_EMIT_READABLE    = 0b0000100000000 << 4
-const READ_EMITTED_READABLE = 0b0001000000000 << 4
-const READ_DONE             = 0b0010000000000 << 4
-const READ_NEXT_TICK        = 0b0100000000000 << 4
-const READ_NEEDS_PUSH       = 0b1000000000000 << 4
+const READ_ACTIVE           = 0b00000000000001 << 4
+const READ_UPDATING         = 0b00000000000010 << 4
+const READ_PRIMARY          = 0b00000000000100 << 4
+const READ_QUEUED           = 0b00000000001000 << 4
+const READ_RESUMED          = 0b00000000010000 << 4
+const READ_PIPE_DRAINED     = 0b00000000100000 << 4
+const READ_ENDING           = 0b00000001000000 << 4
+const READ_EMIT_DATA        = 0b00000010000000 << 4
+const READ_EMIT_READABLE    = 0b00000100000000 << 4
+const READ_EMITTED_READABLE = 0b00001000000000 << 4
+const READ_DONE             = 0b00010000000000 << 4
+const READ_NEXT_TICK        = 0b00100000000000 << 4
+const READ_NEEDS_PUSH       = 0b01000000000000 << 4
+const READ_READ_AHEAD       = 0b10000000000000 << 4
 
 // Combined read state
 const READ_FLOWING = READ_RESUMED | READ_PIPE_DRAINED
 const READ_ACTIVE_AND_NEEDS_PUSH = READ_ACTIVE | READ_NEEDS_PUSH
 const READ_PRIMARY_AND_ACTIVE = READ_PRIMARY | READ_ACTIVE
 const READ_EMIT_READABLE_AND_QUEUED = READ_EMIT_READABLE | READ_QUEUED
+const READ_RESUMED_READ_AHEAD = READ_RESUMED | READ_READ_AHEAD
 
 const READ_NOT_ACTIVE             = MAX ^ READ_ACTIVE
 const READ_NON_PRIMARY            = MAX ^ READ_PRIMARY
@@ -10342,18 +10407,20 @@ const READ_NOT_ENDING             = MAX ^ READ_ENDING
 const READ_PIPE_NOT_DRAINED       = MAX ^ READ_FLOWING
 const READ_NOT_NEXT_TICK          = MAX ^ READ_NEXT_TICK
 const READ_NOT_UPDATING           = MAX ^ READ_UPDATING
+const READ_NO_READ_AHEAD          = MAX ^ READ_READ_AHEAD
+const READ_PAUSED_NO_READ_AHEAD   = MAX ^ READ_RESUMED_READ_AHEAD
 
-// Write state (17 bit offset, 4 bit offset from shared state and 13 from read state)
-const WRITE_ACTIVE     = 0b0000000001 << 17
-const WRITE_UPDATING   = 0b0000000010 << 17
-const WRITE_PRIMARY    = 0b0000000100 << 17
-const WRITE_QUEUED     = 0b0000001000 << 17
-const WRITE_UNDRAINED  = 0b0000010000 << 17
-const WRITE_DONE       = 0b0000100000 << 17
-const WRITE_EMIT_DRAIN = 0b0001000000 << 17
-const WRITE_NEXT_TICK  = 0b0010000000 << 17
-const WRITE_WRITING    = 0b0100000000 << 17
-const WRITE_FINISHING  = 0b1000000000 << 17
+// Write state (18 bit offset, 4 bit offset from shared state and 13 from read state)
+const WRITE_ACTIVE     = 0b0000000001 << 18
+const WRITE_UPDATING   = 0b0000000010 << 18
+const WRITE_PRIMARY    = 0b0000000100 << 18
+const WRITE_QUEUED     = 0b0000001000 << 18
+const WRITE_UNDRAINED  = 0b0000010000 << 18
+const WRITE_DONE       = 0b0000100000 << 18
+const WRITE_EMIT_DRAIN = 0b0001000000 << 18
+const WRITE_NEXT_TICK  = 0b0010000000 << 18
+const WRITE_WRITING    = 0b0100000000 << 18
+const WRITE_FINISHING  = 0b1000000000 << 18
 
 const WRITE_NOT_ACTIVE    = MAX ^ (WRITE_ACTIVE | WRITE_WRITING)
 const WRITE_NON_PRIMARY   = MAX ^ WRITE_PRIMARY
@@ -10380,7 +10447,7 @@ const READ_PRIMARY_STATUS = OPEN_STATUS | READ_ENDING | READ_DONE
 const READ_STATUS = OPEN_STATUS | READ_DONE | READ_QUEUED
 const READ_ENDING_STATUS = OPEN_STATUS | READ_ENDING | READ_QUEUED
 const READ_READABLE_STATUS = OPEN_STATUS | READ_EMIT_READABLE | READ_QUEUED | READ_EMITTED_READABLE
-const SHOULD_NOT_READ = OPEN_STATUS | READ_ACTIVE | READ_ENDING | READ_DONE | READ_NEEDS_PUSH
+const SHOULD_NOT_READ = OPEN_STATUS | READ_ACTIVE | READ_ENDING | READ_DONE | READ_NEEDS_PUSH | READ_READ_AHEAD
 const READ_BACKPRESSURE_STATUS = DESTROY_STATUS | READ_ENDING | READ_DONE
 const READ_UPDATE_SYNC_STATUS = READ_UPDATING | OPEN_STATUS | READ_NEXT_TICK | READ_PRIMARY
 
@@ -10523,8 +10590,9 @@ class ReadableState {
   constructor (stream, { highWaterMark = 16384, map = null, mapReadable, byteLength, byteLengthReadable } = {}) {
     this.stream = stream
     this.queue = new FIFO()
-    this.highWaterMark = highWaterMark
+    this.highWaterMark = highWaterMark === 0 ? 1 : highWaterMark
     this.buffered = 0
+    this.readAhead = highWaterMark > 0
     this.error = null
     this.pipeline = null
     this.byteLength = byteLengthReadable || byteLength || defaultByteLength
@@ -10614,6 +10682,11 @@ class ReadableState {
       return data
     }
 
+    if (this.readAhead === false) {
+      stream._duplexState |= READ_READ_AHEAD
+      this.updateNextTick()
+    }
+
     return null
   }
 
@@ -10635,7 +10708,7 @@ class ReadableState {
     do {
       this.drain()
 
-      while (this.buffered < this.highWaterMark && (stream._duplexState & SHOULD_NOT_READ) === 0) {
+      while (this.buffered < this.highWaterMark && (stream._duplexState & SHOULD_NOT_READ) === READ_READ_AHEAD) {
         stream._duplexState |= READ_ACTIVE_AND_NEEDS_PUSH
         stream._read(this.afterRead)
         this.drain()
@@ -10808,6 +10881,7 @@ function afterWrite (err) {
 function afterRead (err) {
   if (err) this.stream.destroy(err)
   this.stream._duplexState &= READ_NOT_ACTIVE
+  if (this.readAhead === false && (this.stream._duplexState & READ_RESUMED) === 0) this.stream._duplexState &= READ_NO_READ_AHEAD
   this.updateCallback()
 }
 
@@ -10865,7 +10939,7 @@ function afterTransform (err, data) {
 function newListener (name) {
   if (this._readableState !== null) {
     if (name === 'data') {
-      this._duplexState |= (READ_EMIT_DATA | READ_RESUMED)
+      this._duplexState |= (READ_EMIT_DATA | READ_RESUMED_READ_AHEAD)
       this._readableState.updateNextTick()
     }
     if (name === 'readable') {
@@ -10958,10 +11032,11 @@ class Readable extends Stream {
   constructor (opts) {
     super(opts)
 
-    this._duplexState |= OPENING | WRITE_DONE
+    this._duplexState |= OPENING | WRITE_DONE | READ_READ_AHEAD
     this._readableState = new ReadableState(this, opts)
 
     if (opts) {
+      if (this._readableState.readAhead === false) this._duplexState &= READ_NO_READ_AHEAD
       if (opts.read) this._read = opts.read
       if (opts.eagerOpen) this._readableState.updateNextTick()
     }
@@ -10993,13 +11068,13 @@ class Readable extends Stream {
   }
 
   resume () {
-    this._duplexState |= READ_RESUMED
+    this._duplexState |= READ_RESUMED_READ_AHEAD
     this._readableState.updateNextTick()
     return this
   }
 
   pause () {
-    this._duplexState &= READ_PAUSED
+    this._duplexState &= (this._readableState.readAhead === false ? READ_PAUSED_NO_READ_AHEAD : READ_PAUSED)
     return this
   }
 
@@ -11171,7 +11246,7 @@ class Duplex extends Readable { // and Writable
   constructor (opts) {
     super(opts)
 
-    this._duplexState = OPENING
+    this._duplexState = OPENING | (this._duplexState & READ_READ_AHEAD)
     this._writableState = new WritableState(this, opts)
 
     if (opts) {
@@ -41043,7 +41118,7 @@ Dicer.prototype._write = function (data, encoding, cb) {
   if (this._headerFirst && this._isPreamble) {
     if (!this._part) {
       this._part = new PartStream(this._partOpts)
-      if (this._events.preamble) { this.emit('preamble', this._part) } else { this._ignore() }
+      if (this.listenerCount('preamble') !== 0) { this.emit('preamble', this._part) } else { this._ignore() }
     }
     const r = this._hparser.push(data)
     if (!this._inHeader && r !== undefined && r < data.length) { data = data.slice(r) } else { return cb() }
@@ -41100,7 +41175,7 @@ Dicer.prototype._oninfo = function (isMatch, data, start, end) {
       }
     }
     if (this._dashes === 2) {
-      if ((start + i) < end && this._events.trailer) { this.emit('trailer', data.slice(start + i, end)) }
+      if ((start + i) < end && this.listenerCount('trailer') !== 0) { this.emit('trailer', data.slice(start + i, end)) }
       this.reset()
       this._finished = true
       // no more parts will be added
@@ -41118,7 +41193,13 @@ Dicer.prototype._oninfo = function (isMatch, data, start, end) {
     this._part._read = function (n) {
       self._unpause()
     }
-    if (this._isPreamble && this._events.preamble) { this.emit('preamble', this._part) } else if (this._isPreamble !== true && this._events.part) { this.emit('part', this._part) } else { this._ignore() }
+    if (this._isPreamble && this.listenerCount('preamble') !== 0) {
+      this.emit('preamble', this._part)
+    } else if (this._isPreamble !== true && this.listenerCount('part') !== 0) {
+      this.emit('part', this._part)
+    } else {
+      this._ignore()
+    }
     if (!this._isPreamble) { this._inHeader = true }
   }
   if (data && start < end && !this._ignoreData) {
@@ -41796,7 +41877,7 @@ function Multipart (boy, cfg) {
 
         ++nfiles
 
-        if (!boy._events.file) {
+        if (boy.listenerCount('file') === 0) {
           self.parser._ignore()
           return
         }
@@ -42321,7 +42402,7 @@ const decoders = {
     if (textDecoders.has(this.toString())) {
       try {
         return textDecoders.get(this).decode(data)
-      } catch (e) { }
+      } catch {}
     }
     return typeof data === 'string'
       ? data
