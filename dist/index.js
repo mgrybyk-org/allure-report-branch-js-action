@@ -2682,7 +2682,7 @@ var import_graphql = __nccwpck_require__(8467);
 var import_auth_token = __nccwpck_require__(334);
 
 // pkg/dist-src/version.js
-var VERSION = "5.1.0";
+var VERSION = "5.2.0";
 
 // pkg/dist-src/index.js
 var noop = () => {
@@ -2848,7 +2848,7 @@ module.exports = __toCommonJS(dist_src_exports);
 var import_universal_user_agent = __nccwpck_require__(5030);
 
 // pkg/dist-src/version.js
-var VERSION = "9.0.4";
+var VERSION = "9.0.5";
 
 // pkg/dist-src/defaults.js
 var userAgent = `octokit-endpoint.js/${VERSION} ${(0, import_universal_user_agent.getUserAgent)()}`;
@@ -3232,7 +3232,7 @@ var import_request3 = __nccwpck_require__(6234);
 var import_universal_user_agent = __nccwpck_require__(5030);
 
 // pkg/dist-src/version.js
-var VERSION = "7.0.2";
+var VERSION = "7.1.0";
 
 // pkg/dist-src/with-defaults.js
 var import_request2 = __nccwpck_require__(6234);
@@ -6053,7 +6053,7 @@ var import_endpoint = __nccwpck_require__(9440);
 var import_universal_user_agent = __nccwpck_require__(5030);
 
 // pkg/dist-src/version.js
-var VERSION = "8.2.0";
+var VERSION = "8.4.0";
 
 // pkg/dist-src/is-plain-object.js
 function isPlainObject(value) {
@@ -6078,7 +6078,7 @@ function getBufferResponse(response) {
 
 // pkg/dist-src/fetch-wrapper.js
 function fetchWrapper(requestOptions) {
-  var _a, _b, _c;
+  var _a, _b, _c, _d;
   const log = requestOptions.request && requestOptions.request.log ? requestOptions.request.log : console;
   const parseSuccessResponseBody = ((_a = requestOptions.request) == null ? void 0 : _a.parseSuccessResponseBody) !== false;
   if (isPlainObject(requestOptions.body) || Array.isArray(requestOptions.body)) {
@@ -6099,8 +6099,9 @@ function fetchWrapper(requestOptions) {
   return fetch(requestOptions.url, {
     method: requestOptions.method,
     body: requestOptions.body,
+    redirect: (_c = requestOptions.request) == null ? void 0 : _c.redirect,
     headers: requestOptions.headers,
-    signal: (_c = requestOptions.request) == null ? void 0 : _c.signal,
+    signal: (_d = requestOptions.request) == null ? void 0 : _d.signal,
     // duplex must be set if request.body is ReadableStream or Async Iterables.
     // See https://fetch.spec.whatwg.org/#dom-requestinit-duplex.
     ...requestOptions.body && { duplex: "half" }
@@ -6826,309 +6827,6 @@ module.exports = class FastFIFO {
   isEmpty () {
     return this.length === 0
   }
-}
-
-
-/***/ }),
-
-/***/ 5010:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
-
-var fs = __nccwpck_require__(7147);
-var util = __nccwpck_require__(3837);
-var stream = __nccwpck_require__(2781);
-var Readable = stream.Readable;
-var Writable = stream.Writable;
-var PassThrough = stream.PassThrough;
-var Pend = __nccwpck_require__(4833);
-var EventEmitter = (__nccwpck_require__(2361).EventEmitter);
-
-exports.createFromBuffer = createFromBuffer;
-exports.createFromFd = createFromFd;
-exports.BufferSlicer = BufferSlicer;
-exports.FdSlicer = FdSlicer;
-
-util.inherits(FdSlicer, EventEmitter);
-function FdSlicer(fd, options) {
-  options = options || {};
-  EventEmitter.call(this);
-
-  this.fd = fd;
-  this.pend = new Pend();
-  this.pend.max = 1;
-  this.refCount = 0;
-  this.autoClose = !!options.autoClose;
-}
-
-FdSlicer.prototype.read = function(buffer, offset, length, position, callback) {
-  var self = this;
-  self.pend.go(function(cb) {
-    fs.read(self.fd, buffer, offset, length, position, function(err, bytesRead, buffer) {
-      cb();
-      callback(err, bytesRead, buffer);
-    });
-  });
-};
-
-FdSlicer.prototype.write = function(buffer, offset, length, position, callback) {
-  var self = this;
-  self.pend.go(function(cb) {
-    fs.write(self.fd, buffer, offset, length, position, function(err, written, buffer) {
-      cb();
-      callback(err, written, buffer);
-    });
-  });
-};
-
-FdSlicer.prototype.createReadStream = function(options) {
-  return new ReadStream(this, options);
-};
-
-FdSlicer.prototype.createWriteStream = function(options) {
-  return new WriteStream(this, options);
-};
-
-FdSlicer.prototype.ref = function() {
-  this.refCount += 1;
-};
-
-FdSlicer.prototype.unref = function() {
-  var self = this;
-  self.refCount -= 1;
-
-  if (self.refCount > 0) return;
-  if (self.refCount < 0) throw new Error("invalid unref");
-
-  if (self.autoClose) {
-    fs.close(self.fd, onCloseDone);
-  }
-
-  function onCloseDone(err) {
-    if (err) {
-      self.emit('error', err);
-    } else {
-      self.emit('close');
-    }
-  }
-};
-
-util.inherits(ReadStream, Readable);
-function ReadStream(context, options) {
-  options = options || {};
-  Readable.call(this, options);
-
-  this.context = context;
-  this.context.ref();
-
-  this.start = options.start || 0;
-  this.endOffset = options.end;
-  this.pos = this.start;
-  this.destroyed = false;
-}
-
-ReadStream.prototype._read = function(n) {
-  var self = this;
-  if (self.destroyed) return;
-
-  var toRead = Math.min(self._readableState.highWaterMark, n);
-  if (self.endOffset != null) {
-    toRead = Math.min(toRead, self.endOffset - self.pos);
-  }
-  if (toRead <= 0) {
-    self.destroyed = true;
-    self.push(null);
-    self.context.unref();
-    return;
-  }
-  self.context.pend.go(function(cb) {
-    if (self.destroyed) return cb();
-    var buffer = new Buffer(toRead);
-    fs.read(self.context.fd, buffer, 0, toRead, self.pos, function(err, bytesRead) {
-      if (err) {
-        self.destroy(err);
-      } else if (bytesRead === 0) {
-        self.destroyed = true;
-        self.push(null);
-        self.context.unref();
-      } else {
-        self.pos += bytesRead;
-        self.push(buffer.slice(0, bytesRead));
-      }
-      cb();
-    });
-  });
-};
-
-ReadStream.prototype.destroy = function(err) {
-  if (this.destroyed) return;
-  err = err || new Error("stream destroyed");
-  this.destroyed = true;
-  this.emit('error', err);
-  this.context.unref();
-};
-
-util.inherits(WriteStream, Writable);
-function WriteStream(context, options) {
-  options = options || {};
-  Writable.call(this, options);
-
-  this.context = context;
-  this.context.ref();
-
-  this.start = options.start || 0;
-  this.endOffset = (options.end == null) ? Infinity : +options.end;
-  this.bytesWritten = 0;
-  this.pos = this.start;
-  this.destroyed = false;
-
-  this.on('finish', this.destroy.bind(this));
-}
-
-WriteStream.prototype._write = function(buffer, encoding, callback) {
-  var self = this;
-  if (self.destroyed) return;
-
-  if (self.pos + buffer.length > self.endOffset) {
-    var err = new Error("maximum file length exceeded");
-    err.code = 'ETOOBIG';
-    self.destroy();
-    callback(err);
-    return;
-  }
-  self.context.pend.go(function(cb) {
-    if (self.destroyed) return cb();
-    fs.write(self.context.fd, buffer, 0, buffer.length, self.pos, function(err, bytes) {
-      if (err) {
-        self.destroy();
-        cb();
-        callback(err);
-      } else {
-        self.bytesWritten += bytes;
-        self.pos += bytes;
-        self.emit('progress');
-        cb();
-        callback();
-      }
-    });
-  });
-};
-
-WriteStream.prototype.destroy = function() {
-  if (this.destroyed) return;
-  this.destroyed = true;
-  this.context.unref();
-};
-
-util.inherits(BufferSlicer, EventEmitter);
-function BufferSlicer(buffer, options) {
-  EventEmitter.call(this);
-
-  options = options || {};
-  this.refCount = 0;
-  this.buffer = buffer;
-  this.maxChunkSize = options.maxChunkSize || Number.MAX_SAFE_INTEGER;
-}
-
-BufferSlicer.prototype.read = function(buffer, offset, length, position, callback) {
-  var end = position + length;
-  var delta = end - this.buffer.length;
-  var written = (delta > 0) ? delta : length;
-  this.buffer.copy(buffer, offset, position, end);
-  setImmediate(function() {
-    callback(null, written);
-  });
-};
-
-BufferSlicer.prototype.write = function(buffer, offset, length, position, callback) {
-  buffer.copy(this.buffer, position, offset, offset + length);
-  setImmediate(function() {
-    callback(null, length, buffer);
-  });
-};
-
-BufferSlicer.prototype.createReadStream = function(options) {
-  options = options || {};
-  var readStream = new PassThrough(options);
-  readStream.destroyed = false;
-  readStream.start = options.start || 0;
-  readStream.endOffset = options.end;
-  // by the time this function returns, we'll be done.
-  readStream.pos = readStream.endOffset || this.buffer.length;
-
-  // respect the maxChunkSize option to slice up the chunk into smaller pieces.
-  var entireSlice = this.buffer.slice(readStream.start, readStream.pos);
-  var offset = 0;
-  while (true) {
-    var nextOffset = offset + this.maxChunkSize;
-    if (nextOffset >= entireSlice.length) {
-      // last chunk
-      if (offset < entireSlice.length) {
-        readStream.write(entireSlice.slice(offset, entireSlice.length));
-      }
-      break;
-    }
-    readStream.write(entireSlice.slice(offset, nextOffset));
-    offset = nextOffset;
-  }
-
-  readStream.end();
-  readStream.destroy = function() {
-    readStream.destroyed = true;
-  };
-  return readStream;
-};
-
-BufferSlicer.prototype.createWriteStream = function(options) {
-  var bufferSlicer = this;
-  options = options || {};
-  var writeStream = new Writable(options);
-  writeStream.start = options.start || 0;
-  writeStream.endOffset = (options.end == null) ? this.buffer.length : +options.end;
-  writeStream.bytesWritten = 0;
-  writeStream.pos = writeStream.start;
-  writeStream.destroyed = false;
-  writeStream._write = function(buffer, encoding, callback) {
-    if (writeStream.destroyed) return;
-
-    var end = writeStream.pos + buffer.length;
-    if (end > writeStream.endOffset) {
-      var err = new Error("maximum file length exceeded");
-      err.code = 'ETOOBIG';
-      writeStream.destroyed = true;
-      callback(err);
-      return;
-    }
-    buffer.copy(bufferSlicer.buffer, writeStream.pos, 0, buffer.length);
-
-    writeStream.bytesWritten += buffer.length;
-    writeStream.pos = end;
-    writeStream.emit('progress');
-    callback();
-  };
-  writeStream.destroy = function() {
-    writeStream.destroyed = true;
-  };
-  return writeStream;
-};
-
-BufferSlicer.prototype.ref = function() {
-  this.refCount += 1;
-};
-
-BufferSlicer.prototype.unref = function() {
-  this.refCount -= 1;
-
-  if (this.refCount < 0) {
-    throw new Error("invalid unref");
-  }
-};
-
-function createFromBuffer(buffer, options) {
-  return new BufferSlicer(buffer, options);
-}
-
-function createFromFd(fd, options) {
-  return new FdSlicer(fd, options);
 }
 
 
@@ -8381,6 +8079,41 @@ module.exports = function (x) {
 	var prototype;
 	return toString.call(x) === '[object Object]' && (prototype = Object.getPrototypeOf(x), prototype === null || prototype === Object.getPrototypeOf({}));
 };
+
+
+/***/ }),
+
+/***/ 1554:
+/***/ ((module) => {
+
+
+
+const isStream = stream =>
+	stream !== null &&
+	typeof stream === 'object' &&
+	typeof stream.pipe === 'function';
+
+isStream.writable = stream =>
+	isStream(stream) &&
+	stream.writable !== false &&
+	typeof stream._write === 'function' &&
+	typeof stream._writableState === 'object';
+
+isStream.readable = stream =>
+	isStream(stream) &&
+	stream.readable !== false &&
+	typeof stream._read === 'function' &&
+	typeof stream._readableState === 'object';
+
+isStream.duplex = stream =>
+	isStream.writable(stream) &&
+	isStream.readable(stream);
+
+isStream.transform = stream =>
+	isStream.duplex(stream) &&
+	typeof stream._transform === 'function';
+
+module.exports = isStream;
 
 
 /***/ }),
@@ -19846,6 +19579,131 @@ module.exports = buildConnector
 
 /***/ }),
 
+/***/ 4462:
+/***/ ((module) => {
+
+
+
+/** @type {Record<string, string | undefined>} */
+const headerNameLowerCasedRecord = {}
+
+// https://developer.mozilla.org/docs/Web/HTTP/Headers
+const wellknownHeaderNames = [
+  'Accept',
+  'Accept-Encoding',
+  'Accept-Language',
+  'Accept-Ranges',
+  'Access-Control-Allow-Credentials',
+  'Access-Control-Allow-Headers',
+  'Access-Control-Allow-Methods',
+  'Access-Control-Allow-Origin',
+  'Access-Control-Expose-Headers',
+  'Access-Control-Max-Age',
+  'Access-Control-Request-Headers',
+  'Access-Control-Request-Method',
+  'Age',
+  'Allow',
+  'Alt-Svc',
+  'Alt-Used',
+  'Authorization',
+  'Cache-Control',
+  'Clear-Site-Data',
+  'Connection',
+  'Content-Disposition',
+  'Content-Encoding',
+  'Content-Language',
+  'Content-Length',
+  'Content-Location',
+  'Content-Range',
+  'Content-Security-Policy',
+  'Content-Security-Policy-Report-Only',
+  'Content-Type',
+  'Cookie',
+  'Cross-Origin-Embedder-Policy',
+  'Cross-Origin-Opener-Policy',
+  'Cross-Origin-Resource-Policy',
+  'Date',
+  'Device-Memory',
+  'Downlink',
+  'ECT',
+  'ETag',
+  'Expect',
+  'Expect-CT',
+  'Expires',
+  'Forwarded',
+  'From',
+  'Host',
+  'If-Match',
+  'If-Modified-Since',
+  'If-None-Match',
+  'If-Range',
+  'If-Unmodified-Since',
+  'Keep-Alive',
+  'Last-Modified',
+  'Link',
+  'Location',
+  'Max-Forwards',
+  'Origin',
+  'Permissions-Policy',
+  'Pragma',
+  'Proxy-Authenticate',
+  'Proxy-Authorization',
+  'RTT',
+  'Range',
+  'Referer',
+  'Referrer-Policy',
+  'Refresh',
+  'Retry-After',
+  'Sec-WebSocket-Accept',
+  'Sec-WebSocket-Extensions',
+  'Sec-WebSocket-Key',
+  'Sec-WebSocket-Protocol',
+  'Sec-WebSocket-Version',
+  'Server',
+  'Server-Timing',
+  'Service-Worker-Allowed',
+  'Service-Worker-Navigation-Preload',
+  'Set-Cookie',
+  'SourceMap',
+  'Strict-Transport-Security',
+  'Supports-Loading-Mode',
+  'TE',
+  'Timing-Allow-Origin',
+  'Trailer',
+  'Transfer-Encoding',
+  'Upgrade',
+  'Upgrade-Insecure-Requests',
+  'User-Agent',
+  'Vary',
+  'Via',
+  'WWW-Authenticate',
+  'X-Content-Type-Options',
+  'X-DNS-Prefetch-Control',
+  'X-Frame-Options',
+  'X-Permitted-Cross-Domain-Policies',
+  'X-Powered-By',
+  'X-Requested-With',
+  'X-XSS-Protection'
+]
+
+for (let i = 0; i < wellknownHeaderNames.length; ++i) {
+  const key = wellknownHeaderNames[i]
+  const lowerCasedKey = key.toLowerCase()
+  headerNameLowerCasedRecord[key] = headerNameLowerCasedRecord[lowerCasedKey] =
+    lowerCasedKey
+}
+
+// Note: object prototypes should not be able to be referenced. e.g. `Object#hasOwnProperty`.
+Object.setPrototypeOf(headerNameLowerCasedRecord, null)
+
+module.exports = {
+  wellknownHeaderNames,
+  headerNameLowerCasedRecord
+}
+
+
+/***/ }),
+
 /***/ 8045:
 /***/ ((module) => {
 
@@ -20673,6 +20531,7 @@ const { InvalidArgumentError } = __nccwpck_require__(8045)
 const { Blob } = __nccwpck_require__(4300)
 const nodeUtil = __nccwpck_require__(3837)
 const { stringify } = __nccwpck_require__(3477)
+const { headerNameLowerCasedRecord } = __nccwpck_require__(4462)
 
 const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(v => Number(v))
 
@@ -20880,6 +20739,15 @@ const KEEPALIVE_TIMEOUT_EXPR = /timeout=(\d+)/
 function parseKeepAliveTimeout (val) {
   const m = val.toString().match(KEEPALIVE_TIMEOUT_EXPR)
   return m ? parseInt(m[1], 10) * 1000 : null
+}
+
+/**
+ * Retrieves a header name and returns its lowercase value.
+ * @param {string | Buffer} value Header name
+ * @returns {string}
+ */
+function headerNameToString (value) {
+  return headerNameLowerCasedRecord[value] || value.toLowerCase()
 }
 
 function parseHeaders (headers, obj = {}) {
@@ -21153,6 +21021,7 @@ module.exports = {
   isIterable,
   isAsyncIterable,
   isDestroyed,
+  headerNameToString,
   parseRawHeaders,
   parseHeaders,
   parseKeepAliveTimeout,
@@ -27787,14 +27656,18 @@ const { isBlobLike, toUSVString, ReadableStreamFrom } = __nccwpck_require__(3983
 const assert = __nccwpck_require__(9491)
 const { isUint8Array } = __nccwpck_require__(9830)
 
+let supportedHashes = []
+
 // https://nodejs.org/api/crypto.html#determining-if-crypto-support-is-unavailable
 /** @type {import('crypto')|undefined} */
 let crypto
 
 try {
   crypto = __nccwpck_require__(6113)
+  const possibleRelevantHashes = ['sha256', 'sha384', 'sha512']
+  supportedHashes = crypto.getHashes().filter((hash) => possibleRelevantHashes.includes(hash))
+/* c8 ignore next 3 */
 } catch {
-
 }
 
 function responseURL (response) {
@@ -28322,66 +28195,56 @@ function bytesMatch (bytes, metadataList) {
     return true
   }
 
-  // 3. If parsedMetadata is the empty set, return true.
+  // 3. If response is not eligible for integrity validation, return false.
+  // TODO
+
+  // 4. If parsedMetadata is the empty set, return true.
   if (parsedMetadata.length === 0) {
     return true
   }
 
-  // 4. Let metadata be the result of getting the strongest
+  // 5. Let metadata be the result of getting the strongest
   //    metadata from parsedMetadata.
-  const list = parsedMetadata.sort((c, d) => d.algo.localeCompare(c.algo))
-  // get the strongest algorithm
-  const strongest = list[0].algo
-  // get all entries that use the strongest algorithm; ignore weaker
-  const metadata = list.filter((item) => item.algo === strongest)
+  const strongest = getStrongestMetadata(parsedMetadata)
+  const metadata = filterMetadataListByAlgorithm(parsedMetadata, strongest)
 
-  // 5. For each item in metadata:
+  // 6. For each item in metadata:
   for (const item of metadata) {
     // 1. Let algorithm be the alg component of item.
     const algorithm = item.algo
 
     // 2. Let expectedValue be the val component of item.
-    let expectedValue = item.hash
+    const expectedValue = item.hash
 
     // See https://github.com/web-platform-tests/wpt/commit/e4c5cc7a5e48093220528dfdd1c4012dc3837a0e
     // "be liberal with padding". This is annoying, and it's not even in the spec.
 
-    if (expectedValue.endsWith('==')) {
-      expectedValue = expectedValue.slice(0, -2)
-    }
-
     // 3. Let actualValue be the result of applying algorithm to bytes.
     let actualValue = crypto.createHash(algorithm).update(bytes).digest('base64')
 
-    if (actualValue.endsWith('==')) {
-      actualValue = actualValue.slice(0, -2)
+    if (actualValue[actualValue.length - 1] === '=') {
+      if (actualValue[actualValue.length - 2] === '=') {
+        actualValue = actualValue.slice(0, -2)
+      } else {
+        actualValue = actualValue.slice(0, -1)
+      }
     }
 
     // 4. If actualValue is a case-sensitive match for expectedValue,
     //    return true.
-    if (actualValue === expectedValue) {
-      return true
-    }
-
-    let actualBase64URL = crypto.createHash(algorithm).update(bytes).digest('base64url')
-
-    if (actualBase64URL.endsWith('==')) {
-      actualBase64URL = actualBase64URL.slice(0, -2)
-    }
-
-    if (actualBase64URL === expectedValue) {
+    if (compareBase64Mixed(actualValue, expectedValue)) {
       return true
     }
   }
 
-  // 6. Return false.
+  // 7. Return false.
   return false
 }
 
 // https://w3c.github.io/webappsec-subresource-integrity/#grammardef-hash-with-options
 // https://www.w3.org/TR/CSP2/#source-list-syntax
 // https://www.rfc-editor.org/rfc/rfc5234#appendix-B.1
-const parseHashWithOptions = /((?<algo>sha256|sha384|sha512)-(?<hash>[A-z0-9+/]{1}.*={0,2}))( +[\x21-\x7e]?)?/i
+const parseHashWithOptions = /(?<algo>sha256|sha384|sha512)-((?<hash>[A-Za-z0-9+/]+|[A-Za-z0-9_-]+)={0,2}(?:\s|$)( +[!-~]*)?)?/i
 
 /**
  * @see https://w3c.github.io/webappsec-subresource-integrity/#parse-metadata
@@ -28395,8 +28258,6 @@ function parseMetadata (metadata) {
   // 2. Let empty be equal to true.
   let empty = true
 
-  const supportedHashes = crypto.getHashes()
-
   // 3. For each token returned by splitting metadata on spaces:
   for (const token of metadata.split(' ')) {
     // 1. Set empty to false.
@@ -28406,7 +28267,11 @@ function parseMetadata (metadata) {
     const parsedToken = parseHashWithOptions.exec(token)
 
     // 3. If token does not parse, continue to the next token.
-    if (parsedToken === null || parsedToken.groups === undefined) {
+    if (
+      parsedToken === null ||
+      parsedToken.groups === undefined ||
+      parsedToken.groups.algo === undefined
+    ) {
       // Note: Chromium blocks the request at this point, but Firefox
       // gives a warning that an invalid integrity was given. The
       // correct behavior is to ignore these, and subsequently not
@@ -28415,11 +28280,11 @@ function parseMetadata (metadata) {
     }
 
     // 4. Let algorithm be the hash-algo component of token.
-    const algorithm = parsedToken.groups.algo
+    const algorithm = parsedToken.groups.algo.toLowerCase()
 
     // 5. If algorithm is a hash function recognized by the user
     //    agent, add the parsed token to result.
-    if (supportedHashes.includes(algorithm.toLowerCase())) {
+    if (supportedHashes.includes(algorithm)) {
       result.push(parsedToken.groups)
     }
   }
@@ -28430,6 +28295,82 @@ function parseMetadata (metadata) {
   }
 
   return result
+}
+
+/**
+ * @param {{ algo: 'sha256' | 'sha384' | 'sha512' }[]} metadataList
+ */
+function getStrongestMetadata (metadataList) {
+  // Let algorithm be the algo component of the first item in metadataList.
+  // Can be sha256
+  let algorithm = metadataList[0].algo
+  // If the algorithm is sha512, then it is the strongest
+  // and we can return immediately
+  if (algorithm[3] === '5') {
+    return algorithm
+  }
+
+  for (let i = 1; i < metadataList.length; ++i) {
+    const metadata = metadataList[i]
+    // If the algorithm is sha512, then it is the strongest
+    // and we can break the loop immediately
+    if (metadata.algo[3] === '5') {
+      algorithm = 'sha512'
+      break
+    // If the algorithm is sha384, then a potential sha256 or sha384 is ignored
+    } else if (algorithm[3] === '3') {
+      continue
+    // algorithm is sha256, check if algorithm is sha384 and if so, set it as
+    // the strongest
+    } else if (metadata.algo[3] === '3') {
+      algorithm = 'sha384'
+    }
+  }
+  return algorithm
+}
+
+function filterMetadataListByAlgorithm (metadataList, algorithm) {
+  if (metadataList.length === 1) {
+    return metadataList
+  }
+
+  let pos = 0
+  for (let i = 0; i < metadataList.length; ++i) {
+    if (metadataList[i].algo === algorithm) {
+      metadataList[pos++] = metadataList[i]
+    }
+  }
+
+  metadataList.length = pos
+
+  return metadataList
+}
+
+/**
+ * Compares two base64 strings, allowing for base64url
+ * in the second string.
+ *
+* @param {string} actualValue always base64
+ * @param {string} expectedValue base64 or base64url
+ * @returns {boolean}
+ */
+function compareBase64Mixed (actualValue, expectedValue) {
+  if (actualValue.length !== expectedValue.length) {
+    return false
+  }
+  for (let i = 0; i < actualValue.length; ++i) {
+    if (actualValue[i] !== expectedValue[i]) {
+      if (
+        (actualValue[i] === '+' && expectedValue[i] === '-') ||
+        (actualValue[i] === '/' && expectedValue[i] === '_')
+      ) {
+        continue
+      }
+      return false
+    }
+  }
+
+  return true
 }
 
 // https://w3c.github.io/webappsec-upgrade-insecure-requests/#upgrade-request
@@ -28847,7 +28788,8 @@ module.exports = {
   urlHasHttpsScheme,
   urlIsHttpHttpsScheme,
   readAllBytes,
-  normalizeMethodRecord
+  normalizeMethodRecord,
+  parseMetadata
 }
 
 
@@ -30925,12 +30867,17 @@ function parseLocation (statusCode, headers) {
 
 // https://tools.ietf.org/html/rfc7231#section-6.4.4
 function shouldRemoveHeader (header, removeContent, unknownOrigin) {
-  return (
-    (header.length === 4 && header.toString().toLowerCase() === 'host') ||
-    (removeContent && header.toString().toLowerCase().indexOf('content-') === 0) ||
-    (unknownOrigin && header.length === 13 && header.toString().toLowerCase() === 'authorization') ||
-    (unknownOrigin && header.length === 6 && header.toString().toLowerCase() === 'cookie')
-  )
+  if (header.length === 4) {
+    return util.headerNameToString(header) === 'host'
+  }
+  if (removeContent && util.headerNameToString(header).startsWith('content-')) {
+    return true
+  }
+  if (unknownOrigin && (header.length === 13 || header.length === 6 || header.length === 19)) {
+    const name = util.headerNameToString(header)
+    return name === 'authorization' || name === 'cookie' || name === 'proxy-authorization'
+  }
+  return false
 }
 
 // https://tools.ietf.org/html/rfc7231#section-6.4
@@ -36103,13 +36050,334 @@ function wrappy (fn, cb) {
 
 /***/ }),
 
+/***/ 1276:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+// This was adapted from https://github.com/andrewrk/node-fd-slicer by Andrew Kelley under the MIT License.
+var fs = __nccwpck_require__(7147);
+var util = __nccwpck_require__(3837);
+var stream = __nccwpck_require__(2781);
+var Readable = stream.Readable;
+var Writable = stream.Writable;
+var PassThrough = stream.PassThrough;
+var Pend = __nccwpck_require__(4833);
+var EventEmitter = (__nccwpck_require__(2361).EventEmitter);
+
+exports.createFromBuffer = createFromBuffer;
+exports.createFromFd = createFromFd;
+exports.BufferSlicer = BufferSlicer;
+exports.FdSlicer = FdSlicer;
+
+util.inherits(FdSlicer, EventEmitter);
+function FdSlicer(fd, options) {
+  options = options || {};
+  EventEmitter.call(this);
+
+  this.fd = fd;
+  this.pend = new Pend();
+  this.pend.max = 1;
+  this.refCount = 0;
+  this.autoClose = !!options.autoClose;
+}
+
+FdSlicer.prototype.read = function(buffer, offset, length, position, callback) {
+  var self = this;
+  self.pend.go(function(cb) {
+    fs.read(self.fd, buffer, offset, length, position, function(err, bytesRead, buffer) {
+      cb();
+      callback(err, bytesRead, buffer);
+    });
+  });
+};
+
+FdSlicer.prototype.write = function(buffer, offset, length, position, callback) {
+  var self = this;
+  self.pend.go(function(cb) {
+    fs.write(self.fd, buffer, offset, length, position, function(err, written, buffer) {
+      cb();
+      callback(err, written, buffer);
+    });
+  });
+};
+
+FdSlicer.prototype.createReadStream = function(options) {
+  return new ReadStream(this, options);
+};
+
+FdSlicer.prototype.createWriteStream = function(options) {
+  return new WriteStream(this, options);
+};
+
+FdSlicer.prototype.ref = function() {
+  this.refCount += 1;
+};
+
+FdSlicer.prototype.unref = function() {
+  var self = this;
+  self.refCount -= 1;
+
+  if (self.refCount > 0) return;
+  if (self.refCount < 0) throw new Error("invalid unref");
+
+  if (self.autoClose) {
+    fs.close(self.fd, onCloseDone);
+  }
+
+  function onCloseDone(err) {
+    if (err) {
+      self.emit('error', err);
+    } else {
+      self.emit('close');
+    }
+  }
+};
+
+util.inherits(ReadStream, Readable);
+function ReadStream(context, options) {
+  options = options || {};
+  Readable.call(this, options);
+
+  this.context = context;
+  this.context.ref();
+
+  this.start = options.start || 0;
+  this.endOffset = options.end;
+  this.pos = this.start;
+  this.destroyed = false;
+}
+
+ReadStream.prototype._read = function(n) {
+  var self = this;
+  if (self.destroyed) return;
+
+  var toRead = Math.min(self._readableState.highWaterMark, n);
+  if (self.endOffset != null) {
+    toRead = Math.min(toRead, self.endOffset - self.pos);
+  }
+  if (toRead <= 0) {
+    self.destroyed = true;
+    self.push(null);
+    self.context.unref();
+    return;
+  }
+  self.context.pend.go(function(cb) {
+    if (self.destroyed) return cb();
+    var buffer = Buffer.allocUnsafe(toRead);
+    fs.read(self.context.fd, buffer, 0, toRead, self.pos, function(err, bytesRead) {
+      if (err) {
+        self.destroy(err);
+      } else if (bytesRead === 0) {
+        self.destroyed = true;
+        self.push(null);
+        self.context.unref();
+      } else {
+        self.pos += bytesRead;
+        self.push(buffer.slice(0, bytesRead));
+      }
+      cb();
+    });
+  });
+};
+
+ReadStream.prototype.destroy = function(err) {
+  if (this.destroyed) return;
+  err = err || new Error("stream destroyed");
+  this.destroyed = true;
+  this.emit('error', err);
+  this.context.unref();
+};
+
+util.inherits(WriteStream, Writable);
+function WriteStream(context, options) {
+  options = options || {};
+  Writable.call(this, options);
+
+  this.context = context;
+  this.context.ref();
+
+  this.start = options.start || 0;
+  this.endOffset = (options.end == null) ? Infinity : +options.end;
+  this.bytesWritten = 0;
+  this.pos = this.start;
+  this.destroyed = false;
+
+  this.on('finish', this.destroy.bind(this));
+}
+
+WriteStream.prototype._write = function(buffer, encoding, callback) {
+  var self = this;
+  if (self.destroyed) return;
+
+  if (self.pos + buffer.length > self.endOffset) {
+    var err = new Error("maximum file length exceeded");
+    err.code = 'ETOOBIG';
+    self.destroy();
+    callback(err);
+    return;
+  }
+  self.context.pend.go(function(cb) {
+    if (self.destroyed) return cb();
+    fs.write(self.context.fd, buffer, 0, buffer.length, self.pos, function(err, bytes) {
+      if (err) {
+        self.destroy();
+        cb();
+        callback(err);
+      } else {
+        self.bytesWritten += bytes;
+        self.pos += bytes;
+        self.emit('progress');
+        cb();
+        callback();
+      }
+    });
+  });
+};
+
+WriteStream.prototype.destroy = function() {
+  if (this.destroyed) return;
+  this.destroyed = true;
+  this.context.unref();
+};
+
+util.inherits(BufferSlicer, EventEmitter);
+function BufferSlicer(buffer, options) {
+  EventEmitter.call(this);
+
+  options = options || {};
+  this.refCount = 0;
+  this.buffer = buffer;
+  this.maxChunkSize = options.maxChunkSize || Number.MAX_SAFE_INTEGER;
+}
+
+BufferSlicer.prototype.read = function(buffer, offset, length, position, callback) {
+  if (!(0 <= offset && offset <= buffer.length)) throw new RangeError("offset outside buffer: 0 <= " + offset + " <= " + buffer.length);
+  if (position < 0) throw new RangeError("position is negative: " + position);
+  if (offset + length > buffer.length) {
+    // The caller's buffer can't hold all the bytes they're trying to read.
+    // Clamp the length instead of giving an error.
+    // The callback will be informed of fewer than expected bytes written.
+    length = buffer.length - offset;
+  }
+  if (position + length > this.buffer.length) {
+    // Clamp any attempt to read past the end of the source buffer.
+    length = this.buffer.length - position;
+  }
+  if (length <= 0) {
+    // After any clamping, we're fully out of bounds or otherwise have nothing to do.
+    // This isn't an error; it's just zero bytes written.
+    setImmediate(function() {
+      callback(null, 0);
+    });
+    return;
+  }
+  this.buffer.copy(buffer, offset, position, position + length);
+  setImmediate(function() {
+    callback(null, length);
+  });
+};
+
+BufferSlicer.prototype.write = function(buffer, offset, length, position, callback) {
+  buffer.copy(this.buffer, position, offset, offset + length);
+  setImmediate(function() {
+    callback(null, length, buffer);
+  });
+};
+
+BufferSlicer.prototype.createReadStream = function(options) {
+  options = options || {};
+  var readStream = new PassThrough(options);
+  readStream.destroyed = false;
+  readStream.start = options.start || 0;
+  readStream.endOffset = options.end;
+  // by the time this function returns, we'll be done.
+  readStream.pos = readStream.endOffset || this.buffer.length;
+
+  // respect the maxChunkSize option to slice up the chunk into smaller pieces.
+  var entireSlice = this.buffer.slice(readStream.start, readStream.pos);
+  var offset = 0;
+  while (true) {
+    var nextOffset = offset + this.maxChunkSize;
+    if (nextOffset >= entireSlice.length) {
+      // last chunk
+      if (offset < entireSlice.length) {
+        readStream.write(entireSlice.slice(offset, entireSlice.length));
+      }
+      break;
+    }
+    readStream.write(entireSlice.slice(offset, nextOffset));
+    offset = nextOffset;
+  }
+
+  readStream.end();
+  readStream.destroy = function() {
+    readStream.destroyed = true;
+  };
+  return readStream;
+};
+
+BufferSlicer.prototype.createWriteStream = function(options) {
+  var bufferSlicer = this;
+  options = options || {};
+  var writeStream = new Writable(options);
+  writeStream.start = options.start || 0;
+  writeStream.endOffset = (options.end == null) ? this.buffer.length : +options.end;
+  writeStream.bytesWritten = 0;
+  writeStream.pos = writeStream.start;
+  writeStream.destroyed = false;
+  writeStream._write = function(buffer, encoding, callback) {
+    if (writeStream.destroyed) return;
+
+    var end = writeStream.pos + buffer.length;
+    if (end > writeStream.endOffset) {
+      var err = new Error("maximum file length exceeded");
+      err.code = 'ETOOBIG';
+      writeStream.destroyed = true;
+      callback(err);
+      return;
+    }
+    buffer.copy(bufferSlicer.buffer, writeStream.pos, 0, buffer.length);
+
+    writeStream.bytesWritten += buffer.length;
+    writeStream.pos = end;
+    writeStream.emit('progress');
+    callback();
+  };
+  writeStream.destroy = function() {
+    writeStream.destroyed = true;
+  };
+  return writeStream;
+};
+
+BufferSlicer.prototype.ref = function() {
+  this.refCount += 1;
+};
+
+BufferSlicer.prototype.unref = function() {
+  this.refCount -= 1;
+
+  if (this.refCount < 0) {
+    throw new Error("invalid unref");
+  }
+};
+
+function createFromBuffer(buffer, options) {
+  return new BufferSlicer(buffer, options);
+}
+
+function createFromFd(fd, options) {
+  return new FdSlicer(fd, options);
+}
+
+
+/***/ }),
+
 /***/ 8781:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 var __webpack_unused_export__;
 var fs = __nccwpck_require__(7147);
 var zlib = __nccwpck_require__(9796);
-var fd_slicer = __nccwpck_require__(5010);
+var fd_slicer = __nccwpck_require__(1276);
 var crc32 = __nccwpck_require__(4794);
 var util = __nccwpck_require__(3837);
 var EventEmitter = (__nccwpck_require__(2361).EventEmitter);
@@ -36122,9 +36390,12 @@ __webpack_unused_export__ = fromFd;
 exports.FY = fromBuffer;
 __webpack_unused_export__ = fromRandomAccessReader;
 __webpack_unused_export__ = dosDateTimeToDate;
+__webpack_unused_export__ = getFileNameLowLevel;
 __webpack_unused_export__ = validateFileName;
+__webpack_unused_export__ = parseExtraFields;
 __webpack_unused_export__ = ZipFile;
 __webpack_unused_export__ = Entry;
+__webpack_unused_export__ = LocalFileHeader;
 __webpack_unused_export__ = RandomAccessReader;
 
 function open(path, options, callback) {
@@ -36211,8 +36482,9 @@ function fromRandomAccessReader(reader, totalSize, options, callback) {
   // as a consequence of this design decision, it's possible to have ambiguous zip file metadata if a coherent eocdr was in the comment.
   // we search backwards for a eocdr signature, and hope that whoever made the zip file was smart enough to forbid the eocdr signature in the comment.
   var eocdrWithoutCommentSize = 22;
+  var zip64EocdlSize = 20; // Zip64 end of central directory locator
   var maxCommentSize = 0xffff; // 2-byte size
-  var bufferSize = Math.min(eocdrWithoutCommentSize + maxCommentSize, totalSize);
+  var bufferSize = Math.min(zip64EocdlSize + eocdrWithoutCommentSize + maxCommentSize, totalSize);
   var buffer = newBuffer(bufferSize);
   var bufferReadStart = totalSize - buffer.length;
   readAndAssertNoEof(reader, buffer, 0, bufferSize, bufferReadStart, function(err) {
@@ -36220,14 +36492,11 @@ function fromRandomAccessReader(reader, totalSize, options, callback) {
     for (var i = bufferSize - eocdrWithoutCommentSize; i >= 0; i -= 1) {
       if (buffer.readUInt32LE(i) !== 0x06054b50) continue;
       // found eocdr
-      var eocdrBuffer = buffer.slice(i);
+      var eocdrBuffer = buffer.subarray(i);
 
       // 0 - End of central directory signature = 0x06054b50
       // 4 - Number of this disk
       var diskNumber = eocdrBuffer.readUInt16LE(4);
-      if (diskNumber !== 0) {
-        return callback(new Error("multi-disk zip files are not supported: found disk number: " + diskNumber));
-      }
       // 6 - Disk where central directory starts
       // 8 - Number of central directory records on this disk
       // 10 - Total number of central directory records
@@ -36239,29 +36508,18 @@ function fromRandomAccessReader(reader, totalSize, options, callback) {
       var commentLength = eocdrBuffer.readUInt16LE(20);
       var expectedCommentLength = eocdrBuffer.length - eocdrWithoutCommentSize;
       if (commentLength !== expectedCommentLength) {
-        return callback(new Error("invalid comment length. expected: " + expectedCommentLength + ". found: " + commentLength));
+        return callback(new Error("Invalid comment length. Expected: " + expectedCommentLength + ". Found: " + commentLength + ". Are there extra bytes at the end of the file? Or is the end of central dir signature `PK☺☻` in the comment?"));
       }
       // 22 - Comment
       // the encoding is always cp437.
-      var comment = decodeStrings ? decodeBuffer(eocdrBuffer, 22, eocdrBuffer.length, false)
-                                  : eocdrBuffer.slice(22);
+      var comment = decodeStrings ? decodeBuffer(eocdrBuffer.subarray(22), false)
+                                  : eocdrBuffer.subarray(22);
 
-      if (!(entryCount === 0xffff || centralDirectoryOffset === 0xffffffff)) {
-        return callback(null, new ZipFile(reader, centralDirectoryOffset, totalSize, entryCount, comment, options.autoClose, options.lazyEntries, decodeStrings, options.validateEntrySizes, options.strictFileNames));
-      }
-
-      // ZIP64 format
-
-      // ZIP64 Zip64 end of central directory locator
-      var zip64EocdlBuffer = newBuffer(20);
-      var zip64EocdlOffset = bufferReadStart + i - zip64EocdlBuffer.length;
-      readAndAssertNoEof(reader, zip64EocdlBuffer, 0, zip64EocdlBuffer.length, zip64EocdlOffset, function(err) {
-        if (err) return callback(err);
-
+      // Look for a Zip64 end of central directory locator
+      if (i - zip64EocdlSize >= 0 && buffer.readUInt32LE(i - zip64EocdlSize) === 0x07064b50) {
+        // ZIP64 format
+        var zip64EocdlBuffer = buffer.subarray(i - zip64EocdlSize, i - zip64EocdlSize + zip64EocdlSize);
         // 0 - zip64 end of central dir locator signature = 0x07064b50
-        if (zip64EocdlBuffer.readUInt32LE(0) !== 0x07064b50) {
-          return callback(new Error("invalid zip64 end of central directory locator signature"));
-        }
         // 4 - number of the disk with the start of the zip64 end of central directory
         // 8 - relative offset of the zip64 end of central directory record
         var zip64EocdrOffset = readUInt64LE(zip64EocdlBuffer, 8);
@@ -36269,7 +36527,7 @@ function fromRandomAccessReader(reader, totalSize, options, callback) {
 
         // ZIP64 end of central directory record
         var zip64EocdrBuffer = newBuffer(56);
-        readAndAssertNoEof(reader, zip64EocdrBuffer, 0, zip64EocdrBuffer.length, zip64EocdrOffset, function(err) {
+        return readAndAssertNoEof(reader, zip64EocdrBuffer, 0, zip64EocdrBuffer.length, zip64EocdrOffset, function(err) {
           if (err) return callback(err);
 
           // 0 - zip64 end of central dir signature                           4 bytes  (0x06064b50)
@@ -36280,6 +36538,11 @@ function fromRandomAccessReader(reader, totalSize, options, callback) {
           // 12 - version made by                                             2 bytes
           // 14 - version needed to extract                                   2 bytes
           // 16 - number of this disk                                         4 bytes
+          diskNumber = zip64EocdrBuffer.readUInt32LE(16);
+          if (diskNumber !== 0) {
+            // Check this only after zip64 overrides. See #118.
+            return callback(new Error("multi-disk zip files are not supported: found disk number: " + diskNumber));
+          }
           // 20 - number of the disk with the start of the central directory  4 bytes
           // 24 - total number of entries in the central directory on this disk         8 bytes
           // 32 - total number of entries in the central directory            8 bytes
@@ -36290,10 +36553,18 @@ function fromRandomAccessReader(reader, totalSize, options, callback) {
           // 56 - zip64 extensible data sector                                (variable size)
           return callback(null, new ZipFile(reader, centralDirectoryOffset, totalSize, entryCount, comment, options.autoClose, options.lazyEntries, decodeStrings, options.validateEntrySizes, options.strictFileNames));
         });
-      });
-      return;
+      }
+
+      // Not ZIP64 format
+      if (diskNumber !== 0) {
+        return callback(new Error("multi-disk zip files are not supported: found disk number: " + diskNumber));
+      }
+      return callback(null, new ZipFile(reader, centralDirectoryOffset, totalSize, entryCount, comment, options.autoClose, options.lazyEntries, decodeStrings, options.validateEntrySizes, options.strictFileNames));
+
     }
-    callback(new Error("end of central directory record signature not found"));
+
+    // Not a zip file.
+    callback(new Error("End of central directory record signature not found. Either not a zip file, or file is truncated."));
   });
 }
 
@@ -36406,55 +36677,44 @@ ZipFile.prototype._readEntry = function() {
       if (err) return emitErrorAndAutoClose(self, err);
       if (self.emittedError) return;
       // 46 - File name
-      var isUtf8 = (entry.generalPurposeBitFlag & 0x800) !== 0;
-      entry.fileName = self.decodeStrings ? decodeBuffer(buffer, 0, entry.fileNameLength, isUtf8)
-                                          : buffer.slice(0, entry.fileNameLength);
-
+      entry.fileNameRaw = buffer.subarray(0, entry.fileNameLength);
       // 46+n - Extra field
       var fileCommentStart = entry.fileNameLength + entry.extraFieldLength;
-      var extraFieldBuffer = buffer.slice(entry.fileNameLength, fileCommentStart);
-      entry.extraFields = [];
-      var i = 0;
-      while (i < extraFieldBuffer.length - 3) {
-        var headerId = extraFieldBuffer.readUInt16LE(i + 0);
-        var dataSize = extraFieldBuffer.readUInt16LE(i + 2);
-        var dataStart = i + 4;
-        var dataEnd = dataStart + dataSize;
-        if (dataEnd > extraFieldBuffer.length) return emitErrorAndAutoClose(self, new Error("extra field length exceeds extra field buffer size"));
-        var dataBuffer = newBuffer(dataSize);
-        extraFieldBuffer.copy(dataBuffer, 0, dataStart, dataEnd);
-        entry.extraFields.push({
-          id: headerId,
-          data: dataBuffer,
-        });
-        i = dataEnd;
+      entry.extraFieldRaw = buffer.subarray(entry.fileNameLength, fileCommentStart);
+      // 46+n+m - File comment
+      entry.fileCommentRaw = buffer.subarray(fileCommentStart, fileCommentStart + entry.fileCommentLength);
+
+      // Parse the extra fields, which we need for processing other fields.
+      try {
+        entry.extraFields = parseExtraFields(entry.extraFieldRaw);
+      } catch (err) {
+        return emitErrorAndAutoClose(self, err);
       }
 
-      // 46+n+m - File comment
-      entry.fileComment = self.decodeStrings ? decodeBuffer(buffer, fileCommentStart, fileCommentStart + entry.fileCommentLength, isUtf8)
-                                             : buffer.slice(fileCommentStart, fileCommentStart + entry.fileCommentLength);
-      // compatibility hack for https://github.com/thejoshwolfe/yauzl/issues/47
+      // Interpret strings according to bit flags, extra fields, and options.
+      if (self.decodeStrings) {
+        var isUtf8 = (entry.generalPurposeBitFlag & 0x800) !== 0;
+        entry.fileComment = decodeBuffer(entry.fileCommentRaw, isUtf8);
+        entry.fileName = getFileNameLowLevel(entry.generalPurposeBitFlag, entry.fileNameRaw, entry.extraFields, self.strictFileNames);
+        var errorMessage = validateFileName(entry.fileName);
+        if (errorMessage != null) return emitErrorAndAutoClose(self, new Error(errorMessage));
+      } else {
+        entry.fileComment = entry.fileCommentRaw;
+        entry.fileName = entry.fileNameRaw;
+      }
+      // Maintain API compatibility. See https://github.com/thejoshwolfe/yauzl/issues/47
       entry.comment = entry.fileComment;
 
       self.readEntryCursor += buffer.length;
       self.entriesRead += 1;
 
-      if (entry.uncompressedSize            === 0xffffffff ||
-          entry.compressedSize              === 0xffffffff ||
-          entry.relativeOffsetOfLocalHeader === 0xffffffff) {
-        // ZIP64 format
-        // find the Zip64 Extended Information Extra Field
-        var zip64EiefBuffer = null;
-        for (var i = 0; i < entry.extraFields.length; i++) {
-          var extraField = entry.extraFields[i];
-          if (extraField.id === 0x0001) {
-            zip64EiefBuffer = extraField.data;
-            break;
-          }
-        }
-        if (zip64EiefBuffer == null) {
-          return emitErrorAndAutoClose(self, new Error("expected zip64 extended information extra field"));
-        }
+      // Check for the Zip64 Extended Information Extra Field.
+      for (var i = 0; i < entry.extraFields.length; i++) {
+        var extraField = entry.extraFields[i];
+        if (extraField.id !== 0x0001) continue;
+        // Found it.
+
+        var zip64EiefBuffer = extraField.data;
         var index = 0;
         // 0 - Original Size          8 bytes
         if (entry.uncompressedSize === 0xffffffff) {
@@ -36481,36 +36741,8 @@ ZipFile.prototype._readEntry = function() {
           index += 8;
         }
         // 24 - Disk Start Number      4 bytes
-      }
 
-      // check for Info-ZIP Unicode Path Extra Field (0x7075)
-      // see https://github.com/thejoshwolfe/yauzl/issues/33
-      if (self.decodeStrings) {
-        for (var i = 0; i < entry.extraFields.length; i++) {
-          var extraField = entry.extraFields[i];
-          if (extraField.id === 0x7075) {
-            if (extraField.data.length < 6) {
-              // too short to be meaningful
-              continue;
-            }
-            // Version       1 byte      version of this extra field, currently 1
-            if (extraField.data.readUInt8(0) !== 1) {
-              // > Changes may not be backward compatible so this extra
-              // > field should not be used if the version is not recognized.
-              continue;
-            }
-            // NameCRC32     4 bytes     File Name Field CRC32 Checksum
-            var oldNameCrc32 = extraField.data.readUInt32LE(1);
-            if (crc32.unsigned(buffer.slice(0, entry.fileNameLength)) !== oldNameCrc32) {
-              // > If the CRC check fails, this UTF-8 Path Extra Field should be
-              // > ignored and the File Name field in the header should be used instead.
-              continue;
-            }
-            // UnicodeName   Variable    UTF-8 version of the entry File Name
-            entry.fileName = decodeBuffer(extraField.data, 5, extraField.data.length, true);
-            break;
-          }
-        }
+        break;
       }
 
       // validate file size
@@ -36526,14 +36758,6 @@ ZipFile.prototype._readEntry = function() {
         }
       }
 
-      if (self.decodeStrings) {
-        if (!self.strictFileNames) {
-          // allow backslash
-          entry.fileName = entry.fileName.replace(/\\/g, "/");
-        }
-        var errorMessage = validateFileName(entry.fileName, self.validateFileNameOptions);
-        if (errorMessage != null) return emitErrorAndAutoClose(self, new Error(errorMessage));
-      }
       self.emit("entry", entry);
 
       if (!self.lazyEntries) self._readEntry();
@@ -36548,6 +36772,9 @@ ZipFile.prototype.openReadStream = function(entry, options, callback) {
   var relativeEnd = entry.compressedSize;
   if (callback == null) {
     callback = options;
+    options = null;
+  }
+  if (options == null) {
     options = {};
   } else {
     // validate options that the caller has no excuse to get wrong
@@ -36595,7 +36822,80 @@ ZipFile.prototype.openReadStream = function(entry, options, callback) {
   if (entry.isEncrypted()) {
     if (options.decrypt !== false) return callback(new Error("entry is encrypted, and options.decrypt !== false"));
   }
-  // make sure we don't lose the fd before we open the actual read stream
+  var decompress;
+  if (entry.compressionMethod === 0) {
+    // 0 - The file is stored (no compression)
+    decompress = false;
+  } else if (entry.compressionMethod === 8) {
+    // 8 - The file is Deflated
+    decompress = options.decompress != null ? options.decompress : true;
+  } else {
+    return callback(new Error("unsupported compression method: " + entry.compressionMethod));
+  }
+
+  self.readLocalFileHeader(entry, {minimal: true}, function(err, localFileHeader) {
+    if (err) return callback(err);
+    self.openReadStreamLowLevel(
+      localFileHeader.fileDataStart, entry.compressedSize,
+      relativeStart, relativeEnd,
+      decompress, entry.uncompressedSize,
+      callback);
+  });
+};
+
+ZipFile.prototype.openReadStreamLowLevel = function(fileDataStart, compressedSize, relativeStart, relativeEnd, decompress, uncompressedSize, callback) {
+  var self = this;
+
+  var fileDataEnd = fileDataStart + compressedSize;
+  var readStream = self.reader.createReadStream({
+    start: fileDataStart + relativeStart,
+    end: fileDataStart + relativeEnd,
+  });
+  var endpointStream = readStream;
+  if (decompress) {
+    var destroyed = false;
+    var inflateFilter = zlib.createInflateRaw();
+    readStream.on("error", function(err) {
+      // setImmediate here because errors can be emitted during the first call to pipe()
+      setImmediate(function() {
+        if (!destroyed) inflateFilter.emit("error", err);
+      });
+    });
+    readStream.pipe(inflateFilter);
+
+    if (self.validateEntrySizes) {
+      endpointStream = new AssertByteCountStream(uncompressedSize);
+      inflateFilter.on("error", function(err) {
+        // forward zlib errors to the client-visible stream
+        setImmediate(function() {
+          if (!destroyed) endpointStream.emit("error", err);
+        });
+      });
+      inflateFilter.pipe(endpointStream);
+    } else {
+      // the zlib filter is the client-visible stream
+      endpointStream = inflateFilter;
+    }
+    // this is part of yauzl's API, so implement this function on the client-visible stream
+    installDestroyFn(endpointStream, function() {
+      destroyed = true;
+      if (inflateFilter !== endpointStream) inflateFilter.unpipe(endpointStream);
+      readStream.unpipe(inflateFilter);
+      // TODO: the inflateFilter may cause a memory leak. see Issue #27.
+      readStream.destroy();
+    });
+  }
+  callback(null, endpointStream);
+};
+
+ZipFile.prototype.readLocalFileHeader = function(entry, options, callback) {
+  var self = this;
+  if (callback == null) {
+    callback = options;
+    options = null;
+  }
+  if (options == null) options = {};
+
   self.reader.ref();
   var buffer = newBuffer(30);
   readAndAssertNoEof(self.reader, buffer, 0, buffer.length, entry.relativeOffsetOfLocalHeader, function(err) {
@@ -36606,82 +36906,58 @@ ZipFile.prototype.openReadStream = function(entry, options, callback) {
       if (signature !== 0x04034b50) {
         return callback(new Error("invalid local file header signature: 0x" + signature.toString(16)));
       }
-      // all this should be redundant
-      // 4 - Version needed to extract (minimum)
-      // 6 - General purpose bit flag
-      // 8 - Compression method
-      // 10 - File last modification time
-      // 12 - File last modification date
-      // 14 - CRC-32
-      // 18 - Compressed size
-      // 22 - Uncompressed size
-      // 26 - File name length (n)
+
       var fileNameLength = buffer.readUInt16LE(26);
-      // 28 - Extra field length (m)
       var extraFieldLength = buffer.readUInt16LE(28);
+      var fileDataStart = entry.relativeOffsetOfLocalHeader + 30 + fileNameLength + extraFieldLength;
+      // We now have enough information to do this bounds check.
+      if (fileDataStart + entry.compressedSize > self.fileSize) {
+        return callback(new Error("file data overflows file bounds: " +
+            fileDataStart + " + " + entry.compressedSize + " > " + self.fileSize));
+      }
+
+      if (options.minimal) {
+        return callback(null, {fileDataStart: fileDataStart});
+      }
+
+      var localFileHeader = new LocalFileHeader();
+      localFileHeader.fileDataStart = fileDataStart;
+
+      // 4 - Version needed to extract (minimum)
+      localFileHeader.versionNeededToExtract = buffer.readUInt16LE(4);
+      // 6 - General purpose bit flag
+      localFileHeader.generalPurposeBitFlag = buffer.readUInt16LE(6);
+      // 8 - Compression method
+      localFileHeader.compressionMethod = buffer.readUInt16LE(8);
+      // 10 - File last modification time
+      localFileHeader.lastModFileTime = buffer.readUInt16LE(10);
+      // 12 - File last modification date
+      localFileHeader.lastModFileDate = buffer.readUInt16LE(12);
+      // 14 - CRC-32
+      localFileHeader.crc32 = buffer.readUInt32LE(14);
+      // 18 - Compressed size
+      localFileHeader.compressedSize = buffer.readUInt32LE(18);
+      // 22 - Uncompressed size
+      localFileHeader.uncompressedSize = buffer.readUInt32LE(22);
+      // 26 - File name length (n)
+      localFileHeader.fileNameLength = fileNameLength;
+      // 28 - Extra field length (m)
+      localFileHeader.extraFieldLength = extraFieldLength;
       // 30 - File name
       // 30+n - Extra field
-      var localFileHeaderEnd = entry.relativeOffsetOfLocalHeader + buffer.length + fileNameLength + extraFieldLength;
-      var decompress;
-      if (entry.compressionMethod === 0) {
-        // 0 - The file is stored (no compression)
-        decompress = false;
-      } else if (entry.compressionMethod === 8) {
-        // 8 - The file is Deflated
-        decompress = options.decompress != null ? options.decompress : true;
-      } else {
-        return callback(new Error("unsupported compression method: " + entry.compressionMethod));
-      }
-      var fileDataStart = localFileHeaderEnd;
-      var fileDataEnd = fileDataStart + entry.compressedSize;
-      if (entry.compressedSize !== 0) {
-        // bounds check now, because the read streams will probably not complain loud enough.
-        // since we're dealing with an unsigned offset plus an unsigned size,
-        // we only have 1 thing to check for.
-        if (fileDataEnd > self.fileSize) {
-          return callback(new Error("file data overflows file bounds: " +
-              fileDataStart + " + " + entry.compressedSize + " > " + self.fileSize));
-        }
-      }
-      var readStream = self.reader.createReadStream({
-        start: fileDataStart + relativeStart,
-        end: fileDataStart + relativeEnd,
-      });
-      var endpointStream = readStream;
-      if (decompress) {
-        var destroyed = false;
-        var inflateFilter = zlib.createInflateRaw();
-        readStream.on("error", function(err) {
-          // setImmediate here because errors can be emitted during the first call to pipe()
-          setImmediate(function() {
-            if (!destroyed) inflateFilter.emit("error", err);
-          });
-        });
-        readStream.pipe(inflateFilter);
 
-        if (self.validateEntrySizes) {
-          endpointStream = new AssertByteCountStream(entry.uncompressedSize);
-          inflateFilter.on("error", function(err) {
-            // forward zlib errors to the client-visible stream
-            setImmediate(function() {
-              if (!destroyed) endpointStream.emit("error", err);
-            });
-          });
-          inflateFilter.pipe(endpointStream);
-        } else {
-          // the zlib filter is the client-visible stream
-          endpointStream = inflateFilter;
+      buffer = newBuffer(fileNameLength + extraFieldLength);
+      self.reader.ref();
+      readAndAssertNoEof(self.reader, buffer, 0, buffer.length, entry.relativeOffsetOfLocalHeader + 30, function(err) {
+        try {
+          if (err) return callback(err);
+          localFileHeader.fileName = buffer.subarray(0, fileNameLength);
+          localFileHeader.extraField = buffer.subarray(fileNameLength);
+          return callback(null, localFileHeader);
+        } finally {
+          self.reader.unref();
         }
-        // this is part of yauzl's API, so implement this function on the client-visible stream
-        endpointStream.destroy = function() {
-          destroyed = true;
-          if (inflateFilter !== endpointStream) inflateFilter.unpipe(endpointStream);
-          readStream.unpipe(inflateFilter);
-          // TODO: the inflateFilter may cause a memory leak. see Issue #27.
-          readStream.destroy();
-        };
-      }
-      callback(null, endpointStream);
+      });
     } finally {
       self.reader.unref();
     }
@@ -36700,6 +36976,9 @@ Entry.prototype.isCompressed = function() {
   return this.compressionMethod === 8;
 };
 
+function LocalFileHeader() {
+}
+
 function dosDateTimeToDate(date, time) {
   var day = date & 0x1f; // 1-31
   var month = (date >> 5 & 0xf) - 1; // 1-12, 0-11
@@ -36711,6 +36990,50 @@ function dosDateTimeToDate(date, time) {
   var hour = time >> 11 & 0x1f; // 0-23
 
   return new Date(year, month, day, hour, minute, second, millisecond);
+}
+
+function getFileNameLowLevel(generalPurposeBitFlag, fileNameBuffer, extraFields, strictFileNames) {
+  var fileName = null;
+
+  // check for Info-ZIP Unicode Path Extra Field (0x7075)
+  // see https://github.com/thejoshwolfe/yauzl/issues/33
+  for (var i = 0; i < extraFields.length; i++) {
+    var extraField = extraFields[i];
+    if (extraField.id === 0x7075) {
+      if (extraField.data.length < 6) {
+        // too short to be meaningful
+        continue;
+      }
+      // Version       1 byte      version of this extra field, currently 1
+      if (extraField.data.readUInt8(0) !== 1) {
+        // > Changes may not be backward compatible so this extra
+        // > field should not be used if the version is not recognized.
+        continue;
+      }
+      // NameCRC32     4 bytes     File Name Field CRC32 Checksum
+      var oldNameCrc32 = extraField.data.readUInt32LE(1);
+      if (crc32.unsigned(fileNameBuffer) !== oldNameCrc32) {
+        // > If the CRC check fails, this UTF-8 Path Extra Field should be
+        // > ignored and the File Name field in the header should be used instead.
+        continue;
+      }
+      // UnicodeName   Variable    UTF-8 version of the entry File Name
+      fileName = decodeBuffer(extraField.data.subarray(5), true);
+      break;
+    }
+  }
+
+  if (fileName == null) {
+    // The typical case.
+    var isUtf8 = (generalPurposeBitFlag & 0x800) !== 0;
+    fileName = decodeBuffer(fileNameBuffer, isUtf8);
+  }
+
+  if (!strictFileNames) {
+    // Allow backslash.
+    fileName = fileName.replace(/\\/g, "/");
+  }
+  return fileName;
 }
 
 function validateFileName(fileName) {
@@ -36725,6 +37048,25 @@ function validateFileName(fileName) {
   }
   // all good
   return null;
+}
+
+function parseExtraFields(extraFieldBuffer) {
+  var extraFields = [];
+  var i = 0;
+  while (i < extraFieldBuffer.length - 3) {
+    var headerId = extraFieldBuffer.readUInt16LE(i + 0);
+    var dataSize = extraFieldBuffer.readUInt16LE(i + 2);
+    var dataStart = i + 4;
+    var dataEnd = dataStart + dataSize;
+    if (dataEnd > extraFieldBuffer.length) throw new Error("extra field length exceeds extra field buffer size");
+    var dataBuffer = extraFieldBuffer.subarray(dataStart, dataEnd);
+    extraFields.push({
+      id: headerId,
+      data: dataBuffer,
+    });
+    i = dataEnd;
+  }
+  return extraFields;
 }
 
 function readAndAssertNoEof(reader, buffer, offset, length, position, callback) {
@@ -36786,6 +37128,7 @@ RandomAccessReader.prototype.unref = function() {
   }
 };
 RandomAccessReader.prototype.createReadStream = function(options) {
+  if (options == null) options = {};
   var start = options.start;
   var end = options.end;
   if (start === end) {
@@ -36804,11 +37147,11 @@ RandomAccessReader.prototype.createReadStream = function(options) {
       if (!destroyed) refUnrefFilter.emit("error", err);
     });
   });
-  refUnrefFilter.destroy = function() {
+  installDestroyFn(refUnrefFilter, function() {
     stream.unpipe(refUnrefFilter);
     refUnrefFilter.unref();
     stream.destroy();
-  };
+  });
 
   var byteCounter = new AssertByteCountStream(end - start);
   refUnrefFilter.on("error", function(err) {
@@ -36816,11 +37159,11 @@ RandomAccessReader.prototype.createReadStream = function(options) {
       if (!destroyed) byteCounter.emit("error", err);
     });
   });
-  byteCounter.destroy = function() {
+  installDestroyFn(byteCounter, function() {
     destroyed = true;
     refUnrefFilter.unpipe(byteCounter);
     refUnrefFilter.destroy();
-  };
+  });
 
   return stream.pipe(refUnrefFilter).pipe(byteCounter);
 };
@@ -36864,12 +37207,12 @@ RefUnrefFilter.prototype.unref = function(cb) {
 };
 
 var cp437 = '\u0000☺☻♥♦♣♠•◘○◙♂♀♪♫☼►◄↕‼¶§▬↨↑↓→←∟↔▲▼ !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~⌂ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥₧ƒáíóúñÑªº¿⌐¬½¼¡«»░▒▓│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀αßΓπΣσµτΦΘΩδ∞φε∩≡±≥≤⌠⌡÷≈°∙·√ⁿ²■ ';
-function decodeBuffer(buffer, start, end, isUtf8) {
+function decodeBuffer(buffer, isUtf8) {
   if (isUtf8) {
-    return buffer.toString("utf8", start, end);
+    return buffer.toString("utf8");
   } else {
     var result = "";
-    for (var i = start; i < end; i++) {
+    for (var i = 0; i < buffer.length; i++) {
       result += cp437[buffer[i]];
     }
     return result;
@@ -36900,6 +37243,20 @@ if (typeof Buffer.allocUnsafe === "function") {
   };
 }
 
+// Node 8 introduced a proper destroy() implementation on writable streams.
+function installDestroyFn(stream, fn) {
+  if (typeof stream.destroy === "function") {
+    // New API.
+    stream._destroy = function(err, cb) {
+      fn();
+      if (cb != null) cb(err);
+    };
+  } else {
+    // Old API.
+    stream.destroy = fn;
+  }
+}
+
 function defaultCallback(err) {
   if (err) throw err;
 }
@@ -36920,7 +37277,7 @@ __nccwpck_require__.a(module, async (__webpack_handle_async_dependencies__, __we
 /* harmony import */ var _actions_io__WEBPACK_IMPORTED_MODULE_3__ = __nccwpck_require__(7436);
 /* harmony import */ var _actions_io__WEBPACK_IMPORTED_MODULE_3___default = /*#__PURE__*/__nccwpck_require__.n(_actions_io__WEBPACK_IMPORTED_MODULE_3__);
 /* harmony import */ var _src_writeFolderListing_js__WEBPACK_IMPORTED_MODULE_4__ = __nccwpck_require__(4362);
-/* harmony import */ var _src_allure_js__WEBPACK_IMPORTED_MODULE_5__ = __nccwpck_require__(7405);
+/* harmony import */ var _src_allure_js__WEBPACK_IMPORTED_MODULE_5__ = __nccwpck_require__(5735);
 /* harmony import */ var _src_helpers_js__WEBPACK_IMPORTED_MODULE_9__ = __nccwpck_require__(3015);
 /* harmony import */ var _src_isFileExists_js__WEBPACK_IMPORTED_MODULE_6__ = __nccwpck_require__(2139);
 /* harmony import */ var _src_cleanup_js__WEBPACK_IMPORTED_MODULE_7__ = __nccwpck_require__(2193);
@@ -36936,7 +37293,7 @@ __nccwpck_require__.a(module, async (__webpack_handle_async_dependencies__, __we
 
 
 const baseDir = 'allure-action';
-const allureRelease = '2.27.0';
+const allureRelease = '2.29.0';
 const allureCliDir = 'allure-cli';
 const allureArchiveName = 'allure-commandline.tgz';
 try {
@@ -37048,7 +37405,7 @@ __webpack_async_result__();
 
 /***/ }),
 
-/***/ 7405:
+/***/ 5735:
 /***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
 
 
@@ -38203,7 +38560,7 @@ const supported_mimeTypes = [
 	'video/webm',
 	'video/quicktime',
 	'video/vnd.avi',
-	'audio/vnd.wave',
+	'audio/wav',
 	'audio/qcelp',
 	'audio/x-ms-asf',
 	'video/x-ms-asf',
@@ -38320,7 +38677,7 @@ const supported_mimeTypes = [
 ;// CONCATENATED MODULE: ./node_modules/file-type/core.js
 
 
- // eslint-disable-line n/file-extension-in-import
+
 
 
 
@@ -39110,7 +39467,7 @@ class FileTypeParser {
 					const element = await readElement();
 					if (element.id === 0x42_82) {
 						const rawValue = await tokenizer.readToken(new StringType(element.len, 'utf-8'));
-						return rawValue.replace(/\00.*$/g, ''); // Return DocType
+						return rawValue.replaceAll(/\00.*$/g, ''); // Return DocType
 					}
 
 					await tokenizer.ignore(element.len); // ignore payload
@@ -39151,7 +39508,7 @@ class FileTypeParser {
 			if (this.check([0x57, 0x41, 0x56, 0x45], {offset: 8})) {
 				return {
 					ext: 'wav',
-					mime: 'audio/vnd.wave',
+					mime: 'audio/wav',
 				};
 			}
 
@@ -40005,37 +40362,8 @@ async function fileTypeStream(readableStream, options = {}) {
 const supportedExtensions = new Set(extensions);
 const supportedMimeTypes = new Set(supported_mimeTypes);
 
-;// CONCATENATED MODULE: ./node_modules/is-stream/index.js
-function isStream(stream) {
-	return stream !== null
-		&& typeof stream === 'object'
-		&& typeof stream.pipe === 'function';
-}
-
-function isWritableStream(stream) {
-	return isStream(stream)
-		&& stream.writable !== false
-		&& typeof stream._write === 'function'
-		&& typeof stream._writableState === 'object';
-}
-
-function isReadableStream(stream) {
-	return isStream(stream)
-		&& stream.readable !== false
-		&& typeof stream._read === 'function'
-		&& typeof stream._readableState === 'object';
-}
-
-function isDuplexStream(stream) {
-	return isWritableStream(stream)
-		&& isReadableStream(stream);
-}
-
-function isTransformStream(stream) {
-	return isDuplexStream(stream)
-		&& typeof stream._transform === 'function';
-}
-
+// EXTERNAL MODULE: ./node_modules/is-stream/index.js
+var is_stream = __nccwpck_require__(1554);
 // EXTERNAL MODULE: ./node_modules/tar-stream/index.js
 var tar_stream = __nccwpck_require__(2283);
 ;// CONCATENATED MODULE: ./node_modules/@xhmikosr/decompress-tar/index.js
@@ -40045,7 +40373,7 @@ var tar_stream = __nccwpck_require__(2283);
 
 
 const decompressTar = () => async input => {
-	if (!external_node_buffer_namespaceObject.Buffer.isBuffer(input) && !isStream(input)) {
+	if (!external_node_buffer_namespaceObject.Buffer.isBuffer(input) && !is_stream(input)) {
 		throw new TypeError(`Expected a Buffer or Stream, got ${typeof input}`);
 	}
 
@@ -40119,7 +40447,7 @@ var unbzip2_stream = __nccwpck_require__(3467);
 
 
 const decompressTarBz2 = () => async input => {
-	if (!external_node_buffer_namespaceObject.Buffer.isBuffer(input) && !isStream(input)) {
+	if (!external_node_buffer_namespaceObject.Buffer.isBuffer(input) && !is_stream(input)) {
 		throw new TypeError(`Expected a Buffer or Stream, got ${typeof input}`);
 	}
 
@@ -40150,7 +40478,7 @@ const external_node_zlib_namespaceObject = __WEBPACK_EXTERNAL_createRequire(impo
 
 
 const decompressTarGz = () => async input => {
-	if (!external_node_buffer_namespaceObject.Buffer.isBuffer(input) && !isStream(input)) {
+	if (!external_node_buffer_namespaceObject.Buffer.isBuffer(input) && !is_stream(input)) {
 		throw new TypeError(`Expected a Buffer or Stream, got ${typeof input}`);
 	}
 
@@ -42651,7 +42979,7 @@ module.exports = parseParams
 /***/ 6507:
 /***/ ((module) => {
 
-module.exports = JSON.parse('{"name":"seek-bzip","version":"1.0.6","contributors":["C. Scott Ananian (http://cscott.net)","Eli Skeggs","Kevin Kwok","Rob Landley (http://landley.net)"],"description":"a pure-JavaScript Node.JS module for random-access decoding bzip2 data","main":"./lib/index.js","repository":{"type":"git","url":"https://github.com/cscott/seek-bzip.git"},"license":"MIT","bin":{"seek-bunzip":"./bin/seek-bunzip","seek-table":"./bin/seek-bzip-table"},"directories":{"test":"test"},"dependencies":{"commander":"^2.8.1"},"devDependencies":{"fibers":"~1.0.6","mocha":"~2.2.5"},"scripts":{"test":"mocha"}}');
+module.exports = JSON.parse('{"name":"seek-bzip","version":"2.0.0","contributors":["C. Scott Ananian (http://cscott.net)","Eli Skeggs","Kevin Kwok","Rob Landley (http://landley.net)"],"description":"a pure-JavaScript Node.JS module for random-access decoding bzip2 data","main":"./lib/index.js","repository":{"type":"git","url":"https://github.com/cscott/seek-bzip.git"},"license":"MIT","bin":{"seek-bunzip":"./bin/seek-bunzip","seek-table":"./bin/seek-bzip-table"},"directories":{"test":"test"},"dependencies":{"commander":"^6.0.0"},"devDependencies":{"fibers":"^5.0.0","mocha":"^8.1.0"},"scripts":{"test":"mocha"}}');
 
 /***/ })
 

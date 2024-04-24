@@ -22,7 +22,7 @@ import { cleanupOutdatedBranches, cleanupOutdatedReports } from './src/cleanup.j
 import { writeLatestReport } from './src/writeLatest.js'
 
 const baseDir = 'allure-action'
-const allureRelease = '2.27.0'
+const allureRelease = '2.29.0'
 const allureCliDir = 'allure-cli'
 const allureArchiveName = 'allure-commandline.tgz'
 
