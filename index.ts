@@ -19,9 +19,10 @@ import {
 import { getBranchName } from './src/helpers.js'
 import { isFileExist } from './src/isFileExists.js'
 import { cleanupOutdatedBranches, cleanupOutdatedReports } from './src/cleanup.js'
+import { writeLatestReport } from './src/writeLatest.js'
 
 const baseDir = 'allure-action'
-const allureRelease = '2.27.0'
+const allureRelease = '2.29.0'
 const allureCliDir = 'allure-cli'
 const allureArchiveName = 'allure-commandline.tgz'
 
@@ -87,6 +88,14 @@ try {
     // action
     await io.mkdirP(reportBaseDir)
 
+    // cleanup (should be before the folder listing)
+    if (branchCleanupEnabled) {
+        await cleanupOutdatedBranches(ghPagesBaseDir)
+    }
+    if (maxReports > 0) {
+        await cleanupOutdatedReports(ghPagesBaseDir, maxReports)
+    }
+
     // folder listing
     if (listDirs) {
         if (await shouldWriteRootHtml(ghPagesPath)) {
@@ -113,6 +122,7 @@ try {
     const results = await updateDataJson(reportBaseDir, reportDir, github.context.runId, runUniqueId)
     await writeAllureListing(reportBaseDir)
     await writeLastRunId(reportBaseDir, github.context.runId, runTimestamp)
+    await writeLatestReport(reportBaseDir)
 
     // outputs
     core.setOutput('report_url', ghPagesReportUrl)
@@ -124,13 +134,6 @@ try {
     core.setOutput('test_result_total', results.total)
     core.setOutput('run_unique_id', runUniqueId)
     core.setOutput('report_path', reportDir)
-
-    if (branchCleanupEnabled) {
-        await cleanupOutdatedBranches(ghPagesBaseDir)
-    }
-    if (maxReports > 0) {
-        await cleanupOutdatedReports(ghPagesBaseDir, maxReports)
-    }
 } catch (error) {
     core.setFailed(error.message)
 } finally {
