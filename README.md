@@ -8,10 +8,10 @@ Docker version of the action: [allure-report-with-history-per-branch](https://gi
 
 See examples:
 
-- [Allure History List](https://mgrybyk.github.io/allure-report-branch-js-action/allure-action/main/self-test/)
-- [Allure Report](https://mgrybyk.github.io/allure-report-branch-js-action/allure-action/main/self-test/latest.html)
-- [Browse different branches](https://mgrybyk.github.io/allure-report-branch-js-action/allure-action/)
-- [Pull Request Comment Example](https://github.com/mgrybyk/allure-report-branch-js-action/pull/3)
+- [Allure History List](https://mgrybyk-org.github.io/allure-report-branch-js-action/allure-action/main/self-test/)
+- [Allure Report](https://mgrybyk-org.github.io/allure-report-branch-js-action/allure-action/main/self-test/latest.html)
+- [Browse different branches](https://mgrybyk-org.github.io/allure-report-branch-js-action/allure-action/)
+- [Pull Request Comment Example](https://github.com/mgrybyk-org/allure-report-branch-js-action/pull/3)
 
 *Compatible with [HTML Trend Report Action](https://github.com/marketplace/actions/publish-report-per-branch).*
 
@@ -35,7 +35,7 @@ steps:
       path: gh-pages-dir # checkout path
 
   - name: Allure Report Action
-    uses: mgrybyk/allure-report-branch-js-action@v1
+    uses: mgrybyk-org/allure-report-branch-js-action@v1
     if: always()
     continue-on-error: true
     id: allure # used in comment to PR
@@ -45,7 +45,7 @@ steps:
       report_dir: 'allure-results'
 
   - name: Git Commit and Push Action
-    uses: mgrybyk/git-commit-pull-push-action@v1
+    uses: mgrybyk-org/git-commit-pull-push-action@v1
     if: always()
     with:
       repository: gh-pages-dir
@@ -55,7 +55,7 @@ steps:
 
 ### Adding PR Comment
 
-Make sure to set `id` in `mgrybyk/allure-report-branch-js-action` step.
+Make sure to set `id` in `mgrybyk-org/allure-report-branch-js-action` step.
 
 ```yaml
 permissions:
