@@ -41,7 +41,7 @@ jobs:
         run: npm run e2e -- --update-snapshots
       - name: git commit and push
         if: github.event_name == 'pull_request'
-        uses: mgrybyk/git-commit-pull-push-action@v1
+        uses: mgrybyk-org/git-commit-pull-push-action@v1
         with:
           branch: ${{ github.head_ref }}
           commit_message: Update screenshots
@@ -73,7 +73,7 @@ jobs:
           max_reports: 9
 
       - name: Git Commit and Push Action
-        uses: mgrybyk/git-commit-pull-push-action@v1
+        uses: mgrybyk-org/git-commit-pull-push-action@v1
         if: always()
         with:
           repository: gh-pages-dir
@@ -129,7 +129,7 @@ jobs:
           max_reports: 0
 
       - name: Git Commit and Push Action
-        uses: mgrybyk/git-commit-pull-push-action@v1
+        uses: mgrybyk-org/git-commit-pull-push-action@v1
         if: always()
         with:
           repository: gh-pages-dir
@@ -186,7 +186,7 @@ jobs:
           max_reports: 0
 
       - name: Git Commit and Push Action
-        uses: mgrybyk/git-commit-pull-push-action@v1
+        uses: mgrybyk-org/git-commit-pull-push-action@v1
         if: always()
         with:
           repository: gh-pages-dir
