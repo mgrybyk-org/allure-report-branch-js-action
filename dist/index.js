@@ -41540,6 +41540,17 @@ const cleanupOutdatedBranches = async (ghPagesBaseDir) => {
         console.error('cleanup outdated branches failed.', err);
     }
 };
+const sortRuns = (a, b) => {
+    const tsA = a.split('_')[1];
+    const tsb = b.split('_')[1];
+    if (tsA < tsb) {
+        return -1;
+    }
+    if (tsA > tsb) {
+        return 1;
+    }
+    return 0;
+};
 const cleanupOutdatedReports = async (ghPagesBaseDir, maxReports) => {
     try {
         const localBranches = (await promises_.readdir(ghPagesBaseDir, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name);
@@ -41555,7 +41566,7 @@ const cleanupOutdatedReports = async (ghPagesBaseDir, maxReports) => {
                     .map((d) => d.name);
                 // run per report
                 if (runs.length > maxReports) {
-                    runs.sort();
+                    runs.sort(sortRuns);
                     while (runs.length > maxReports) {
                         await promises_.rm(external_path_.join(ghPagesBaseDir, localBranch, reportName, runs.shift()), {
                             recursive: true,
