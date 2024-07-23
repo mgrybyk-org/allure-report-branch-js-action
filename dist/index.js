@@ -9581,7 +9581,7 @@ class SemVer {
     do {
       const a = this.build[i]
       const b = other.build[i]
-      debug('prerelease compare', i, a, b)
+      debug('build compare', i, a, b)
       if (a === undefined && b === undefined) {
         return 0
       } else if (b === undefined) {
@@ -10092,11 +10092,12 @@ const PREMATURE_CLOSE = new Error('Premature close')
 
 const queueTick = __nccwpck_require__(5322)
 const FIFO = __nccwpck_require__(2958)
+const TextDecoder = __nccwpck_require__(1072)
 
 /* eslint-disable no-multi-spaces */
 
-// 28 bits used total (4 from shared, 14 from read, and 10 from write)
-const MAX = ((1 << 28) - 1)
+// 29 bits used total (4 from shared, 14 from read, and 11 from write)
+const MAX = ((1 << 29) - 1)
 
 // Shared state
 const OPENING       = 0b0001
@@ -10143,17 +10144,18 @@ const READ_NOT_UPDATING           = MAX ^ READ_UPDATING
 const READ_NO_READ_AHEAD          = MAX ^ READ_READ_AHEAD
 const READ_PAUSED_NO_READ_AHEAD   = MAX ^ READ_RESUMED_READ_AHEAD
 
-// Write state (18 bit offset, 4 bit offset from shared state and 13 from read state)
-const WRITE_ACTIVE     = 0b0000000001 << 18
-const WRITE_UPDATING   = 0b0000000010 << 18
-const WRITE_PRIMARY    = 0b0000000100 << 18
-const WRITE_QUEUED     = 0b0000001000 << 18
-const WRITE_UNDRAINED  = 0b0000010000 << 18
-const WRITE_DONE       = 0b0000100000 << 18
-const WRITE_EMIT_DRAIN = 0b0001000000 << 18
-const WRITE_NEXT_TICK  = 0b0010000000 << 18
-const WRITE_WRITING    = 0b0100000000 << 18
-const WRITE_FINISHING  = 0b1000000000 << 18
+// Write state (18 bit offset, 4 bit offset from shared state and 14 from read state)
+const WRITE_ACTIVE     = 0b00000000001 << 18
+const WRITE_UPDATING   = 0b00000000010 << 18
+const WRITE_PRIMARY    = 0b00000000100 << 18
+const WRITE_QUEUED     = 0b00000001000 << 18
+const WRITE_UNDRAINED  = 0b00000010000 << 18
+const WRITE_DONE       = 0b00000100000 << 18
+const WRITE_EMIT_DRAIN = 0b00001000000 << 18
+const WRITE_NEXT_TICK  = 0b00010000000 << 18
+const WRITE_WRITING    = 0b00100000000 << 18
+const WRITE_FINISHING  = 0b01000000000 << 18
+const WRITE_CORKED     = 0b10000000000 << 18
 
 const WRITE_NOT_ACTIVE    = MAX ^ (WRITE_ACTIVE | WRITE_WRITING)
 const WRITE_NON_PRIMARY   = MAX ^ WRITE_PRIMARY
@@ -10162,6 +10164,7 @@ const WRITE_DRAINED       = MAX ^ WRITE_UNDRAINED
 const WRITE_NOT_QUEUED    = MAX ^ WRITE_QUEUED
 const WRITE_NOT_NEXT_TICK = MAX ^ WRITE_NEXT_TICK
 const WRITE_NOT_UPDATING  = MAX ^ WRITE_UPDATING
+const WRITE_NOT_CORKED    = MAX ^ WRITE_CORKED
 
 // Combined shared state
 const ACTIVE = READ_ACTIVE | WRITE_ACTIVE
@@ -10189,7 +10192,7 @@ const WRITE_PRIMARY_STATUS = OPEN_STATUS | WRITE_FINISHING | WRITE_DONE
 const WRITE_QUEUED_AND_UNDRAINED = WRITE_QUEUED | WRITE_UNDRAINED
 const WRITE_QUEUED_AND_ACTIVE = WRITE_QUEUED | WRITE_ACTIVE
 const WRITE_DRAIN_STATUS = WRITE_QUEUED | WRITE_UNDRAINED | OPEN_STATUS | WRITE_ACTIVE
-const WRITE_STATUS = OPEN_STATUS | WRITE_ACTIVE | WRITE_QUEUED
+const WRITE_STATUS = OPEN_STATUS | WRITE_ACTIVE | WRITE_QUEUED | WRITE_CORKED
 const WRITE_PRIMARY_AND_ACTIVE = WRITE_PRIMARY | WRITE_ACTIVE
 const WRITE_ACTIVE_AND_WRITING = WRITE_ACTIVE | WRITE_WRITING
 const WRITE_FINISHING_STATUS = OPEN_STATUS | WRITE_FINISHING | WRITE_QUEUED_AND_ACTIVE | WRITE_DONE
@@ -10375,7 +10378,11 @@ class ReadableState {
       return false
     }
 
-    if (this.map !== null) data = this.map(data)
+    if (this.map !== null) {
+      data = this.map(data)
+      if (data === null) return this.buffered < this.highWaterMark
+    }
+
     this.buffered += this.byteLength(data)
     this.queue.push(data)
 
@@ -10772,6 +10779,19 @@ class Readable extends Stream {
       if (this._readableState.readAhead === false) this._duplexState &= READ_NO_READ_AHEAD
       if (opts.read) this._read = opts.read
       if (opts.eagerOpen) this._readableState.updateNextTick()
+      if (opts.encoding) this.setEncoding(opts.encoding)
+    }
+  }
+
+  setEncoding (encoding) {
+    const dec = new TextDecoder(encoding)
+    const map = this._readableState.map || echo
+    this._readableState.map = mapOrSkip
+    return this
+
+    function mapOrSkip (data) {
+      const next = dec.push(data)
+      return next === '' ? null : map(next)
     }
   }
 
@@ -10935,6 +10955,15 @@ class Writable extends Stream {
     }
   }
 
+  cork () {
+    this._duplexState |= WRITE_CORKED
+  }
+
+  uncork () {
+    this._duplexState &= WRITE_NOT_CORKED
+    this._writableState.updateNextTick()
+  }
+
   _writev (batch, cb) {
     cb(null)
   }
@@ -10987,6 +11016,15 @@ class Duplex extends Readable { // and Writable
       if (opts.write) this._write = opts.write
       if (opts.final) this._final = opts.final
     }
+  }
+
+  cork () {
+    this._duplexState |= WRITE_CORKED
+  }
+
+  uncork () {
+    this._duplexState &= WRITE_NOT_CORKED
+    this._writableState.updateNextTick()
   }
 
   _writev (batch, cb) {
@@ -11146,6 +11184,10 @@ function pipeline (stream, ...streams) {
       s.destroy(err)
     }
   }
+}
+
+function echo (s) {
+  return s
 }
 
 function isStream (stream) {
@@ -12349,6 +12391,198 @@ function overflow (self, size) {
 
 function mapWritable (buf) {
   return b4a.isBuffer(buf) ? buf : b4a.from(buf)
+}
+
+
+/***/ }),
+
+/***/ 1072:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+const PassThroughDecoder = __nccwpck_require__(6042)
+const UTF8Decoder = __nccwpck_require__(3197)
+
+module.exports = class TextDecoder {
+  constructor (encoding = 'utf8') {
+    this.encoding = normalizeEncoding(encoding)
+
+    switch (this.encoding) {
+      case 'utf8':
+        this.decoder = new UTF8Decoder()
+        break
+      case 'utf16le':
+      case 'base64':
+        throw new Error('Unsupported encoding: ' + this.encoding)
+      default:
+        this.decoder = new PassThroughDecoder(this.encoding)
+    }
+  }
+
+  push (data) {
+    if (typeof data === 'string') return data
+    return this.decoder.decode(data)
+  }
+
+  // For Node.js compatibility
+  write (data) {
+    return this.push(data)
+  }
+
+  end (data) {
+    let result = ''
+    if (data) result = this.push(data)
+    result += this.decoder.flush()
+    return result
+  }
+}
+
+function normalizeEncoding (encoding) {
+  encoding = encoding.toLowerCase()
+
+  switch (encoding) {
+    case 'utf8':
+    case 'utf-8':
+      return 'utf8'
+    case 'ucs2':
+    case 'ucs-2':
+    case 'utf16le':
+    case 'utf-16le':
+      return 'utf16le'
+    case 'latin1':
+    case 'binary':
+      return 'latin1'
+    case 'base64':
+    case 'ascii':
+    case 'hex':
+      return encoding
+    default:
+      throw new Error('Unknown encoding: ' + encoding)
+  }
+};
+
+
+/***/ }),
+
+/***/ 6042:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+const b4a = __nccwpck_require__(3497)
+
+module.exports = class PassThroughDecoder {
+  constructor (encoding) {
+    this.encoding = encoding
+  }
+
+  decode (tail) {
+    return b4a.toString(tail, this.encoding)
+  }
+
+  flush () {
+    return ''
+  }
+}
+
+
+/***/ }),
+
+/***/ 3197:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+const b4a = __nccwpck_require__(3497)
+
+/**
+ * https://encoding.spec.whatwg.org/#utf-8-decoder
+ */
+module.exports = class UTF8Decoder {
+  constructor () {
+    this.codePoint = 0
+    this.bytesSeen = 0
+    this.bytesNeeded = 0
+    this.lowerBoundary = 0x80
+    this.upperBoundary = 0xbf
+  }
+
+  decode (data) {
+    // If we have a fast path, just sniff if the last part is a boundary
+    if (this.bytesNeeded === 0) {
+      let isBoundary = true
+
+      for (let i = Math.max(0, data.byteLength - 4), n = data.byteLength; i < n && isBoundary; i++) {
+        isBoundary = data[i] <= 0x7f
+      }
+
+      if (isBoundary) return b4a.toString(data, 'utf8')
+    }
+
+    let result = ''
+
+    for (let i = 0, n = data.byteLength; i < n; i++) {
+      const byte = data[i]
+
+      if (this.bytesNeeded === 0) {
+        if (byte <= 0x7f) {
+          result += String.fromCharCode(byte)
+        } else if (byte >= 0xc2 && byte <= 0xdf) {
+          this.bytesNeeded = 1
+          this.codePoint = byte & 0x1f
+        } else if (byte >= 0xe0 && byte <= 0xef) {
+          if (byte === 0xe0) this.lowerBoundary = 0xa0
+          else if (byte === 0xed) this.upperBoundary = 0x9f
+          this.bytesNeeded = 2
+          this.codePoint = byte & 0xf
+        } else if (byte >= 0xf0 && byte <= 0xf4) {
+          if (byte === 0xf0) this.lowerBoundary = 0x90
+          if (byte === 0xf4) this.upperBoundary = 0x8f
+          this.bytesNeeded = 3
+          this.codePoint = byte & 0x7
+        } else {
+          result += '\ufffd'
+        }
+
+        continue
+      }
+
+      if (byte < this.lowerBoundary || byte > this.upperBoundary) {
+        this.codePoint = 0
+        this.bytesNeeded = 0
+        this.bytesSeen = 0
+        this.lowerBoundary = 0x80
+        this.upperBoundary = 0xbf
+
+        result += '\ufffd'
+
+        continue
+      }
+
+      this.lowerBoundary = 0x80
+      this.upperBoundary = 0xbf
+
+      this.codePoint = (this.codePoint << 6) | (byte & 0x3f)
+      this.bytesSeen++
+
+      if (this.bytesSeen !== this.bytesNeeded) continue
+
+      result += String.fromCodePoint(this.codePoint)
+
+      this.codePoint = 0
+      this.bytesNeeded = 0
+      this.bytesSeen = 0
+    }
+
+    return result
+  }
+
+  flush () {
+    const result = this.bytesNeeded > 0 ? '\ufffd' : ''
+
+    this.codePoint = 0
+    this.bytesNeeded = 0
+    this.bytesSeen = 0
+    this.lowerBoundary = 0x80
+    this.upperBoundary = 0xbf
+
+    return result
+  }
 }
 
 
@@ -37277,7 +37511,7 @@ __nccwpck_require__.a(module, async (__webpack_handle_async_dependencies__, __we
 /* harmony import */ var _actions_io__WEBPACK_IMPORTED_MODULE_3__ = __nccwpck_require__(7436);
 /* harmony import */ var _actions_io__WEBPACK_IMPORTED_MODULE_3___default = /*#__PURE__*/__nccwpck_require__.n(_actions_io__WEBPACK_IMPORTED_MODULE_3__);
 /* harmony import */ var _src_writeFolderListing_js__WEBPACK_IMPORTED_MODULE_4__ = __nccwpck_require__(4362);
-/* harmony import */ var _src_allure_js__WEBPACK_IMPORTED_MODULE_5__ = __nccwpck_require__(5735);
+/* harmony import */ var _src_allure_js__WEBPACK_IMPORTED_MODULE_5__ = __nccwpck_require__(3726);
 /* harmony import */ var _src_helpers_js__WEBPACK_IMPORTED_MODULE_9__ = __nccwpck_require__(3015);
 /* harmony import */ var _src_isFileExists_js__WEBPACK_IMPORTED_MODULE_6__ = __nccwpck_require__(2139);
 /* harmony import */ var _src_cleanup_js__WEBPACK_IMPORTED_MODULE_7__ = __nccwpck_require__(2193);
@@ -37293,7 +37527,7 @@ __nccwpck_require__.a(module, async (__webpack_handle_async_dependencies__, __we
 
 
 const baseDir = 'allure-action';
-const allureRelease = '2.29.0';
+const allureRelease = '2.30.0';
 const allureCliDir = 'allure-cli';
 const allureArchiveName = 'allure-commandline.tgz';
 try {
@@ -37405,7 +37639,7 @@ __webpack_async_result__();
 
 /***/ }),
 
-/***/ 5735:
+/***/ 3726:
 /***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
 
 
@@ -37443,7 +37677,6 @@ var external_node_util_ = __nccwpck_require__(7261);
 // EXTERNAL MODULE: ./node_modules/ieee754/index.js
 var ieee754 = __nccwpck_require__(3092);
 ;// CONCATENATED MODULE: ./node_modules/token-types/lib/index.js
-
 
 // Primitive types
 function dv(array) {
@@ -37822,14 +38055,6 @@ class Uint8ArrayType {
         return array.subarray(offset, offset + this.len);
     }
 }
-class BufferType {
-    constructor(len) {
-        this.len = len;
-    }
-    get(uint8Array, off) {
-        return Buffer.from(uint8Array.subarray(off, off + this.len));
-    }
-}
 /**
  * Consume a fixed number of bytes from the stream and return a string with a specified encoding.
  */
@@ -37837,9 +38062,10 @@ class StringType {
     constructor(len, encoding) {
         this.len = len;
         this.encoding = encoding;
+        this.textDecoder = new TextDecoder(encoding);
     }
     get(uint8Array, offset) {
-        return external_node_buffer_namespaceObject.Buffer.from(uint8Array).toString(this.encoding, offset, offset + this.len);
+        return this.textDecoder.decode(uint8Array.subarray(offset, offset + this.len));
     }
 }
 /**
@@ -37849,97 +38075,38 @@ class StringType {
 class AnsiStringType {
     constructor(len) {
         this.len = len;
+        this.textDecoder = new TextDecoder('windows-1252');
     }
-    static decode(buffer, offset, until) {
-        let str = '';
-        for (let i = offset; i < until; ++i) {
-            str += AnsiStringType.codePointToString(AnsiStringType.singleByteDecoder(buffer[i]));
-        }
-        return str;
-    }
-    static inRange(a, min, max) {
-        return min <= a && a <= max;
-    }
-    static codePointToString(cp) {
-        if (cp <= 0xFFFF) {
-            return String.fromCharCode(cp);
-        }
-        else {
-            cp -= 0x10000;
-            return String.fromCharCode((cp >> 10) + 0xD800, (cp & 0x3FF) + 0xDC00);
-        }
-    }
-    static singleByteDecoder(bite) {
-        if (AnsiStringType.inRange(bite, 0x00, 0x7F)) {
-            return bite;
-        }
-        const codePoint = AnsiStringType.windows1252[bite - 0x80];
-        if (codePoint === null) {
-            throw Error('invaliding encoding');
-        }
-        return codePoint;
-    }
-    get(buffer, offset = 0) {
-        return AnsiStringType.decode(buffer, offset, offset + this.len);
+    get(uint8Array, offset = 0) {
+        return this.textDecoder.decode(uint8Array.subarray(offset, offset + this.len));
     }
 }
-AnsiStringType.windows1252 = [8364, 129, 8218, 402, 8222, 8230, 8224, 8225, 710, 8240, 352,
-    8249, 338, 141, 381, 143, 144, 8216, 8217, 8220, 8221, 8226, 8211, 8212, 732,
-    8482, 353, 8250, 339, 157, 382, 376, 160, 161, 162, 163, 164, 165, 166, 167, 168,
-    169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184,
-    185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200,
-    201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216,
-    217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232,
-    233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244, 245, 246, 247,
-    248, 249, 250, 251, 252, 253, 254, 255];
 
-;// CONCATENATED MODULE: ./node_modules/peek-readable/lib/EndOfFileStream.js
+;// CONCATENATED MODULE: ./node_modules/peek-readable/lib/EndOfStreamError.js
 const defaultMessages = 'End-Of-Stream';
 /**
  * Thrown on read operation of the end of file or stream has been reached
  */
-class EndOfStreamError extends Error {
+class EndOfStreamError_EndOfStreamError extends Error {
     constructor() {
         super(defaultMessages);
     }
 }
 
-;// CONCATENATED MODULE: ./node_modules/peek-readable/lib/Deferred.js
-class Deferred {
+;// CONCATENATED MODULE: ./node_modules/peek-readable/lib/AbstractStreamReader.js
+
+class AbstractStreamReader_AbstractStreamReader {
     constructor() {
-        this.resolve = () => null;
-        this.reject = () => null;
-        this.promise = new Promise((resolve, reject) => {
-            this.reject = reject;
-            this.resolve = resolve;
-        });
-    }
-}
-
-;// CONCATENATED MODULE: ./node_modules/peek-readable/lib/StreamReader.js
-
-
-
-const maxStreamReadSize = 1 * 1024 * 1024; // Maximum request length on read-stream operation
-class StreamReader {
-    constructor(s) {
-        this.s = s;
         /**
-         * Deferred used for postponed read request (as not data is yet available to read)
+         * Maximum request length on read-stream operation
          */
-        this.deferred = null;
+        this.maxStreamReadSize = 1 * 1024 * 1024;
         this.endOfStream = false;
         /**
          * Store peeked data
          * @type {Array}
          */
         this.peekQueue = [];
-        if (!s.read || !s.once) {
-            throw new Error('Expected an instance of stream.Readable');
-        }
-        this.s.once('end', () => this.reject(new EndOfStreamError()));
-        this.s.once('error', err => this.reject(err));
-        this.s.once('close', () => this.reject(new Error('Stream closed')));
     }
     /**
      * Read ahead (peek) from stream. Subsequent read or peeks will return the same data
@@ -37953,6 +38120,17 @@ class StreamReader {
         this.peekQueue.push(uint8Array.subarray(offset, offset + bytesRead)); // Put read data back to peek buffer
         return bytesRead;
     }
+    async read(buffer, offset, length) {
+        if (length === 0) {
+            return 0;
+        }
+        let bytesRead = this.readFromPeekBuffer(buffer, offset, length);
+        bytesRead += await this.readRemainderFromStream(buffer, offset + bytesRead, length - bytesRead);
+        if (bytesRead === 0) {
+            throw new EndOfStreamError_EndOfStreamError();
+        }
+        return bytesRead;
+    }
     /**
      * Read chunk from stream
      * @param buffer - Target Uint8Array (or Buffer) to store data read from stream in
@@ -37960,13 +38138,7 @@ class StreamReader {
      * @param length - Number of bytes to read
      * @returns Number of bytes read
      */
-    async read(buffer, offset, length) {
-        if (length === 0) {
-            return 0;
-        }
-        if (this.peekQueue.length === 0 && this.endOfStream) {
-            throw new EndOfStreamError();
-        }
+    readFromPeekBuffer(buffer, offset, length) {
         let remaining = length;
         let bytesRead = 0;
         // consume peeked data first
@@ -37983,16 +38155,46 @@ class StreamReader {
                 this.peekQueue.push(peekData.subarray(lenCopy));
             }
         }
-        // continue reading from stream if required
+        return bytesRead;
+    }
+    async readRemainderFromStream(buffer, offset, remaining) {
+        let bytesRead = 0;
+        // Continue reading from stream if required
         while (remaining > 0 && !this.endOfStream) {
-            const reqLen = Math.min(remaining, maxStreamReadSize);
+            const reqLen = Math.min(remaining, this.maxStreamReadSize);
             const chunkLen = await this.readFromStream(buffer, offset + bytesRead, reqLen);
-            bytesRead += chunkLen;
-            if (chunkLen < reqLen)
+            if (chunkLen === 0)
                 break;
+            bytesRead += chunkLen;
             remaining -= chunkLen;
         }
         return bytesRead;
+    }
+}
+
+;// CONCATENATED MODULE: ./node_modules/peek-readable/lib/StreamReader.js
+
+
+
+
+/**
+ * Node.js Readable Stream Reader
+ * Ref: https://nodejs.org/api/stream.html#readable-streams
+ */
+class StreamReader_StreamReader extends (/* unused pure expression or super */ null && (AbstractStreamReader)) {
+    constructor(s) {
+        super();
+        this.s = s;
+        /**
+         * Deferred used for postponed read request (as not data is yet available to read)
+         */
+        this.deferred = null;
+        if (!s.read || !s.once) {
+            throw new Error('Expected an instance of stream.Readable');
+        }
+        this.s.once('end', () => this.reject(new EndOfStreamError()));
+        this.s.once('error', err => this.reject(err));
+        this.s.once('close', () => this.reject(new Error('Stream closed')));
     }
     /**
      * Read chunk from stream
@@ -38002,6 +38204,9 @@ class StreamReader {
      * @returns Number of bytes read
      */
     async readFromStream(buffer, offset, length) {
+        if (this.endOfStream) {
+            return 0;
+        }
         const readBuffer = this.s.read(length);
         if (readBuffer) {
             buffer.set(readBuffer, offset);
@@ -38047,24 +38252,60 @@ class StreamReader {
     }
 }
 
+;// CONCATENATED MODULE: ./node_modules/peek-readable/lib/WebStreamReader.js
+
+
+
+/**
+ * Read from a WebStream
+ * Reference: https://nodejs.org/api/webstreams.html#class-readablestreambyobreader
+ */
+class WebStreamReader extends AbstractStreamReader_AbstractStreamReader {
+    constructor(stream) {
+        super();
+        this.reader = stream.getReader({ mode: 'byob' });
+    }
+    async readFromStream(buffer, offset, length) {
+        if (this.endOfStream) {
+            throw new EndOfStreamError_EndOfStreamError();
+        }
+        const result = await this.reader.read(new Uint8Array(length));
+        if (result.done) {
+            this.endOfStream = result.done;
+        }
+        if (result.value) {
+            buffer.set(result.value, offset);
+            return result.value.byteLength;
+        }
+        return 0;
+    }
+}
+
 ;// CONCATENATED MODULE: ./node_modules/peek-readable/lib/index.js
+
 
 
 
 ;// CONCATENATED MODULE: ./node_modules/strtok3/lib/AbstractTokenizer.js
 
-
 /**
  * Core tokenizer
  */
 class AbstractTokenizer {
-    constructor(fileInfo) {
+    /**
+     * Constructor
+     * @param options Tokenizer options
+     * @protected
+     */
+    constructor(options) {
+        var _a;
         /**
          * Tokenizer-stream position
          */
         this.position = 0;
         this.numBuffer = new Uint8Array(8);
-        this.fileInfo = fileInfo ? fileInfo : {};
+        this.fileInfo = (_a = options === null || options === void 0 ? void 0 : options.fileInfo) !== null && _a !== void 0 ? _a : {};
+        this.onClose = options === null || options === void 0 ? void 0 : options.onClose;
     }
     /**
      * Read a token from the tokenizer-stream
@@ -38073,10 +38314,10 @@ class AbstractTokenizer {
      * @returns Promise with token data
      */
     async readToken(token, position = this.position) {
-        const uint8Array = external_node_buffer_namespaceObject.Buffer.alloc(token.len);
+        const uint8Array = new Uint8Array(token.len);
         const len = await this.readBuffer(uint8Array, { position });
         if (len < token.len)
-            throw new EndOfStreamError();
+            throw new EndOfStreamError_EndOfStreamError();
         return token.get(uint8Array, 0);
     }
     /**
@@ -38086,10 +38327,10 @@ class AbstractTokenizer {
      * @returns Promise with token data
      */
     async peekToken(token, position = this.position) {
-        const uint8Array = external_node_buffer_namespaceObject.Buffer.alloc(token.len);
+        const uint8Array = new Uint8Array(token.len);
         const len = await this.peekBuffer(uint8Array, { position });
         if (len < token.len)
-            throw new EndOfStreamError();
+            throw new EndOfStreamError_EndOfStreamError();
         return token.get(uint8Array, 0);
     }
     /**
@@ -38100,7 +38341,7 @@ class AbstractTokenizer {
     async readNumber(token) {
         const len = await this.readBuffer(this.numBuffer, { length: token.len });
         if (len < token.len)
-            throw new EndOfStreamError();
+            throw new EndOfStreamError_EndOfStreamError();
         return token.get(this.numBuffer, 0);
     }
     /**
@@ -38111,7 +38352,7 @@ class AbstractTokenizer {
     async peekNumber(token) {
         const len = await this.peekBuffer(this.numBuffer, { length: token.len });
         if (len < token.len)
-            throw new EndOfStreamError();
+            throw new EndOfStreamError_EndOfStreamError();
         return token.get(this.numBuffer, 0);
     }
     /**
@@ -38131,7 +38372,8 @@ class AbstractTokenizer {
         return length;
     }
     async close() {
-        // empty
+        var _a;
+        await ((_a = this.onClose) === null || _a === void 0 ? void 0 : _a.call(this));
     }
     normalizeOptions(uint8Array, options) {
         if (options && options.position !== undefined && options.position < this.position) {
@@ -38158,17 +38400,15 @@ class AbstractTokenizer {
 
 
 const maxBufferSize = 256000;
-class ReadStreamTokenizer extends AbstractTokenizer {
-    constructor(stream, fileInfo) {
-        super(fileInfo);
-        this.streamReader = new StreamReader(stream);
-    }
+class ReadStreamTokenizer_ReadStreamTokenizer extends AbstractTokenizer {
     /**
-     * Get file information, an HTTP-client may implement this doing a HEAD request
-     * @return Promise with file information
+     * Constructor
+     * @param streamReader stream-reader to read from
+     * @param options Tokenizer options
      */
-    async getFileInfo() {
-        return this.fileInfo;
+    constructor(streamReader, options) {
+        super(options);
+        this.streamReader = streamReader;
     }
     /**
      * Read buffer from tokenizer
@@ -38192,7 +38432,7 @@ class ReadStreamTokenizer extends AbstractTokenizer {
         const bytesRead = await this.streamReader.read(uint8Array, normOptions.offset, normOptions.length);
         this.position += bytesRead;
         if ((!options || !options.mayBeLess) && bytesRead < normOptions.length) {
-            throw new EndOfStreamError();
+            throw new EndOfStreamError_EndOfStreamError();
         }
         return bytesRead;
     }
@@ -38222,13 +38462,13 @@ class ReadStreamTokenizer extends AbstractTokenizer {
                 bytesRead = await this.streamReader.peek(uint8Array, normOptions.offset, normOptions.length);
             }
             catch (err) {
-                if (options && options.mayBeLess && err instanceof EndOfStreamError) {
+                if (options && options.mayBeLess && err instanceof EndOfStreamError_EndOfStreamError) {
                     return 0;
                 }
                 throw err;
             }
             if ((!normOptions.mayBeLess) && bytesRead < normOptions.length) {
-                throw new EndOfStreamError();
+                throw new EndOfStreamError_EndOfStreamError();
             }
         }
         return bytesRead;
@@ -38257,10 +38497,10 @@ class BufferTokenizer extends AbstractTokenizer {
     /**
      * Construct BufferTokenizer
      * @param uint8Array - Uint8Array to tokenize
-     * @param fileInfo - Pass additional file information to the tokenizer
+     * @param options Tokenizer options
      */
-    constructor(uint8Array, fileInfo) {
-        super(fileInfo);
+    constructor(uint8Array, options) {
+        super(options);
         this.uint8Array = uint8Array;
         this.fileInfo.size = this.fileInfo.size ? this.fileInfo.size : uint8Array.length;
     }
@@ -38291,15 +38531,15 @@ class BufferTokenizer extends AbstractTokenizer {
         const normOptions = this.normalizeOptions(uint8Array, options);
         const bytes2read = Math.min(this.uint8Array.length - normOptions.position, normOptions.length);
         if ((!normOptions.mayBeLess) && bytes2read < normOptions.length) {
-            throw new EndOfStreamError();
+            throw new EndOfStreamError_EndOfStreamError();
         }
         else {
             uint8Array.set(this.uint8Array.subarray(normOptions.position, normOptions.position + bytes2read), normOptions.offset);
             return bytes2read;
         }
     }
-    async close() {
-        // empty
+    close() {
+        return super.close();
     }
 }
 
@@ -38307,28 +38547,364 @@ class BufferTokenizer extends AbstractTokenizer {
 
 
 
+
+
 /**
  * Construct ReadStreamTokenizer from given Stream.
  * Will set fileSize, if provided given Stream has set the .path property/
  * @param stream - Read from Node.js Stream.Readable
- * @param fileInfo - Pass the file information, like size and MIME-type of the corresponding stream.
+ * @param options - Tokenizer options
  * @returns ReadStreamTokenizer
  */
-function fromStream(stream, fileInfo) {
-    fileInfo = fileInfo ? fileInfo : {};
-    return new ReadStreamTokenizer(stream, fileInfo);
+function fromStream(stream, options) {
+    return new ReadStreamTokenizer(new StreamReader(stream), options);
+}
+/**
+ * Construct ReadStreamTokenizer from given ReadableStream (WebStream API).
+ * Will set fileSize, if provided given Stream has set the .path property/
+ * @param webStream - Read from Node.js Stream.Readable
+ * @param options - Tokenizer options
+ * @returns ReadStreamTokenizer
+ */
+function fromWebStream(webStream, options) {
+    return new ReadStreamTokenizer_ReadStreamTokenizer(new WebStreamReader(webStream), options);
 }
 /**
  * Construct ReadStreamTokenizer from given Buffer.
  * @param uint8Array - Uint8Array to tokenize
- * @param fileInfo - Pass additional file information to the tokenizer
+ * @param options - Tokenizer options
  * @returns BufferTokenizer
  */
-function fromBuffer(uint8Array, fileInfo) {
-    return new BufferTokenizer(uint8Array, fileInfo);
+function fromBuffer(uint8Array, options) {
+    return new BufferTokenizer(uint8Array, options);
+}
+
+;// CONCATENATED MODULE: ./node_modules/uint8array-extras/index.js
+const objectToString = Object.prototype.toString;
+const uint8ArrayStringified = '[object Uint8Array]';
+const arrayBufferStringified = '[object ArrayBuffer]';
+
+function isType(value, typeConstructor, typeStringified) {
+	if (!value) {
+		return false;
+	}
+
+	if (value.constructor === typeConstructor) {
+		return true;
+	}
+
+	return objectToString.call(value) === typeStringified;
+}
+
+function isUint8Array(value) {
+	return isType(value, Uint8Array, uint8ArrayStringified);
+}
+
+function isArrayBuffer(value) {
+	return isType(value, ArrayBuffer, arrayBufferStringified);
+}
+
+function isUint8ArrayOrArrayBuffer(value) {
+	return isUint8Array(value) || isArrayBuffer(value);
+}
+
+function assertUint8Array(value) {
+	if (!isUint8Array(value)) {
+		throw new TypeError(`Expected \`Uint8Array\`, got \`${typeof value}\``);
+	}
+}
+
+function assertUint8ArrayOrArrayBuffer(value) {
+	if (!isUint8ArrayOrArrayBuffer(value)) {
+		throw new TypeError(`Expected \`Uint8Array\` or \`ArrayBuffer\`, got \`${typeof value}\``);
+	}
+}
+
+function toUint8Array(value) {
+	if (value instanceof ArrayBuffer) {
+		return new Uint8Array(value);
+	}
+
+	if (ArrayBuffer.isView(value)) {
+		return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+	}
+
+	throw new TypeError(`Unsupported value, got \`${typeof value}\`.`);
+}
+
+function concatUint8Arrays(arrays, totalLength) {
+	if (arrays.length === 0) {
+		return new Uint8Array(0);
+	}
+
+	totalLength ??= arrays.reduce((accumulator, currentValue) => accumulator + currentValue.length, 0);
+
+	const returnValue = new Uint8Array(totalLength);
+
+	let offset = 0;
+	for (const array of arrays) {
+		assertUint8Array(array);
+		returnValue.set(array, offset);
+		offset += array.length;
+	}
+
+	return returnValue;
+}
+
+function areUint8ArraysEqual(a, b) {
+	assertUint8Array(a);
+	assertUint8Array(b);
+
+	if (a === b) {
+		return true;
+	}
+
+	if (a.length !== b.length) {
+		return false;
+	}
+
+	// eslint-disable-next-line unicorn/no-for-loop
+	for (let index = 0; index < a.length; index++) {
+		if (a[index] !== b[index]) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+function compareUint8Arrays(a, b) {
+	assertUint8Array(a);
+	assertUint8Array(b);
+
+	const length = Math.min(a.length, b.length);
+
+	for (let index = 0; index < length; index++) {
+		const diff = a[index] - b[index];
+		if (diff !== 0) {
+			return Math.sign(diff);
+		}
+	}
+
+	// At this point, all the compared elements are equal.
+	// The shorter array should come first if the arrays are of different lengths.
+	return Math.sign(a.length - b.length);
+}
+
+const cachedDecoders = {
+	utf8: new globalThis.TextDecoder('utf8'),
+};
+
+function uint8ArrayToString(array, encoding = 'utf8') {
+	assertUint8ArrayOrArrayBuffer(array);
+	cachedDecoders[encoding] ??= new globalThis.TextDecoder(encoding);
+	return cachedDecoders[encoding].decode(array);
+}
+
+function assertString(value) {
+	if (typeof value !== 'string') {
+		throw new TypeError(`Expected \`string\`, got \`${typeof value}\``);
+	}
+}
+
+const cachedEncoder = new globalThis.TextEncoder();
+
+function stringToUint8Array(string) {
+	assertString(string);
+	return cachedEncoder.encode(string);
+}
+
+function base64ToBase64Url(base64) {
+	return base64.replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+}
+
+function base64UrlToBase64(base64url) {
+	return base64url.replaceAll('-', '+').replaceAll('_', '/');
+}
+
+// Reference: https://phuoc.ng/collection/this-vs-that/concat-vs-push/
+const MAX_BLOCK_SIZE = 65_535;
+
+function uint8ArrayToBase64(array, {urlSafe = false} = {}) {
+	assertUint8Array(array);
+
+	let base64;
+
+	if (array.length < MAX_BLOCK_SIZE) {
+	// Required as `btoa` and `atob` don't properly support Unicode: https://developer.mozilla.org/en-US/docs/Glossary/Base64#the_unicode_problem
+		base64 = globalThis.btoa(String.fromCodePoint.apply(this, array));
+	} else {
+		base64 = '';
+		for (const value of array) {
+			base64 += String.fromCodePoint(value);
+		}
+
+		base64 = globalThis.btoa(base64);
+	}
+
+	return urlSafe ? base64ToBase64Url(base64) : base64;
+}
+
+function base64ToUint8Array(base64String) {
+	assertString(base64String);
+	return Uint8Array.from(globalThis.atob(base64UrlToBase64(base64String)), x => x.codePointAt(0));
+}
+
+function stringToBase64(string, {urlSafe = false} = {}) {
+	assertString(string);
+	return uint8ArrayToBase64(stringToUint8Array(string), {urlSafe});
+}
+
+function base64ToString(base64String) {
+	assertString(base64String);
+	return uint8ArrayToString(base64ToUint8Array(base64String));
+}
+
+const byteToHexLookupTable = Array.from({length: 256}, (_, index) => index.toString(16).padStart(2, '0'));
+
+function uint8ArrayToHex(array) {
+	assertUint8Array(array);
+
+	// Concatenating a string is faster than using an array.
+	let hexString = '';
+
+	// eslint-disable-next-line unicorn/no-for-loop -- Max performance is critical.
+	for (let index = 0; index < array.length; index++) {
+		hexString += byteToHexLookupTable[array[index]];
+	}
+
+	return hexString;
+}
+
+const hexToDecimalLookupTable = {
+	0: 0,
+	1: 1,
+	2: 2,
+	3: 3,
+	4: 4,
+	5: 5,
+	6: 6,
+	7: 7,
+	8: 8,
+	9: 9,
+	a: 10,
+	b: 11,
+	c: 12,
+	d: 13,
+	e: 14,
+	f: 15,
+	A: 10,
+	B: 11,
+	C: 12,
+	D: 13,
+	E: 14,
+	F: 15,
+};
+
+function hexToUint8Array(hexString) {
+	assertString(hexString);
+
+	if (hexString.length % 2 !== 0) {
+		throw new Error('Invalid Hex string length.');
+	}
+
+	const resultLength = hexString.length / 2;
+	const bytes = new Uint8Array(resultLength);
+
+	for (let index = 0; index < resultLength; index++) {
+		const highNibble = hexToDecimalLookupTable[hexString[index * 2]];
+		const lowNibble = hexToDecimalLookupTable[hexString[(index * 2) + 1]];
+
+		if (highNibble === undefined || lowNibble === undefined) {
+			throw new Error(`Invalid Hex character encountered at position ${index * 2}`);
+		}
+
+		bytes[index] = (highNibble << 4) | lowNibble; // eslint-disable-line no-bitwise
+	}
+
+	return bytes;
+}
+
+/**
+@param {DataView} view
+@returns {number}
+*/
+function getUintBE(view) {
+	const {byteLength} = view;
+
+	if (byteLength === 6) {
+		return (view.getUint16(0) * (2 ** 32)) + view.getUint32(2);
+	}
+
+	if (byteLength === 5) {
+		return (view.getUint8(0) * (2 ** 32)) + view.getUint32(1);
+	}
+
+	if (byteLength === 4) {
+		return view.getUint32(0);
+	}
+
+	if (byteLength === 3) {
+		return (view.getUint8(0) * (2 ** 16)) + view.getUint16(1);
+	}
+
+	if (byteLength === 2) {
+		return view.getUint16(0);
+	}
+
+	if (byteLength === 1) {
+		return view.getUint8(0);
+	}
+}
+
+/**
+@param {Uint8Array} array
+@param {Uint8Array} value
+@returns {number}
+*/
+function indexOf(array, value) {
+	const arrayLength = array.length;
+	const valueLength = value.length;
+
+	if (valueLength === 0) {
+		return -1;
+	}
+
+	if (valueLength > arrayLength) {
+		return -1;
+	}
+
+	const validOffsetLength = arrayLength - valueLength;
+
+	for (let index = 0; index <= validOffsetLength; index++) {
+		let isMatch = true;
+		for (let index2 = 0; index2 < valueLength; index2++) {
+			if (array[index + index2] !== value[index2]) {
+				isMatch = false;
+				break;
+			}
+		}
+
+		if (isMatch) {
+			return index;
+		}
+	}
+
+	return -1;
+}
+
+/**
+@param {Uint8Array} array
+@param {Uint8Array} value
+@returns {boolean}
+*/
+function includes(array, value) {
+	return indexOf(array, value) !== -1;
 }
 
 ;// CONCATENATED MODULE: ./node_modules/file-type/util.js
+
+
 function stringToBytes(string) {
 	return [...string].map(character => character.charCodeAt(0)); // eslint-disable-line unicorn/prefer-code-point
 }
@@ -38336,12 +38912,12 @@ function stringToBytes(string) {
 /**
 Checks whether the TAR checksum is valid.
 
-@param {Buffer} buffer - The TAR header `[offset ... offset + 512]`.
+@param {Uint8Array} arrayBuffer - The TAR header `[offset ... offset + 512]`.
 @param {number} offset - TAR header offset.
 @returns {boolean} `true` if the TAR checksum is valid, otherwise `false`.
 */
-function tarHeaderChecksumMatches(buffer, offset = 0) {
-	const readSum = Number.parseInt(buffer.toString('utf8', 148, 154).replace(/\0.*$/, '').trim(), 8); // Read sum in header
+function tarHeaderChecksumMatches(arrayBuffer, offset = 0) {
+	const readSum = Number.parseInt(new StringType(6).get(arrayBuffer, 148).replace(/\0.*$/, '').trim(), 8); // Read sum in header
 	if (Number.isNaN(readSum)) {
 		return false;
 	}
@@ -38349,11 +38925,11 @@ function tarHeaderChecksumMatches(buffer, offset = 0) {
 	let sum = 8 * 0x20; // Initialize signed bit sum
 
 	for (let index = offset; index < offset + 148; index++) {
-		sum += buffer[index];
+		sum += arrayBuffer[index];
 	}
 
 	for (let index = offset + 156; index < offset + 512; index++) {
-		sum += buffer[index];
+		sum += arrayBuffer[index];
 	}
 
 	return readSum === sum;
@@ -38522,6 +39098,7 @@ const extensions = [
 	'avro',
 	'icc',
 	'fbx',
+	'vsdx',
 ];
 
 const supported_mimeTypes = [
@@ -38672,16 +39249,21 @@ const supported_mimeTypes = [
 	'application/avro',
 	'application/vnd.iccprofile',
 	'application/x.autodesk.fbx', // Invented by us
+	'application/vnd.visio',
 ];
 
 ;// CONCATENATED MODULE: ./node_modules/file-type/core.js
+/**
+Primary entry point, Node.js specific entry point is index.js
+*/
 
 
 
 
 
 
-const minimumBytes = 4100; // A fair amount of file-types are detectable within this range.
+
+const reasonableDetectionSizeInBytes = 4100; // A fair amount of file-types are detectable within this range.
 
 async function fileTypeFromStream(stream) {
 	return new FileTypeParser().fromStream(stream);
@@ -38748,7 +39330,7 @@ class FileTypeParser {
 
 	async fromBuffer(input) {
 		if (!(input instanceof Uint8Array || input instanceof ArrayBuffer)) {
-			throw new TypeError(`Expected the \`input\` argument to be of type \`Uint8Array\` or \`Buffer\` or \`ArrayBuffer\`, got \`${typeof input}\``);
+			throw new TypeError(`Expected the \`input\` argument to be of type \`Uint8Array\` or \`ArrayBuffer\`, got \`${typeof input}\``);
 		}
 
 		const buffer = input instanceof Uint8Array ? input : new Uint8Array(input);
@@ -38761,52 +39343,16 @@ class FileTypeParser {
 	}
 
 	async fromBlob(blob) {
-		const buffer = await blob.arrayBuffer();
-		return this.fromBuffer(new Uint8Array(buffer));
+		return this.fromStream(blob.stream());
 	}
 
 	async fromStream(stream) {
-		const tokenizer = await fromStream(stream);
+		const tokenizer = await fromWebStream(stream);
 		try {
 			return await this.fromTokenizer(tokenizer);
 		} finally {
 			await tokenizer.close();
 		}
-	}
-
-	async toDetectionStream(readableStream, options = {}) {
-		const {default: stream} = await Promise.resolve(/* import() */).then(__nccwpck_require__.t.bind(__nccwpck_require__, 4492, 19));
-		const {sampleSize = minimumBytes} = options;
-
-		return new Promise((resolve, reject) => {
-			readableStream.on('error', reject);
-
-			readableStream.once('readable', () => {
-				(async () => {
-					try {
-						// Set up output stream
-						const pass = new stream.PassThrough();
-						const outputStream = stream.pipeline ? stream.pipeline(readableStream, pass, () => {}) : readableStream.pipe(pass);
-
-						// Read the input stream and detect the filetype
-						const chunk = readableStream.read(sampleSize) ?? readableStream.read() ?? external_node_buffer_namespaceObject.Buffer.alloc(0);
-						try {
-							pass.fileType = await this.fromBuffer(chunk);
-						} catch (error) {
-							if (error instanceof EndOfStreamError) {
-								pass.fileType = undefined;
-							} else {
-								reject(error);
-							}
-						}
-
-						resolve(outputStream);
-					} catch (error) {
-						reject(error);
-					}
-				})();
-			});
-		});
 	}
 
 	check(header, options) {
@@ -38818,7 +39364,7 @@ class FileTypeParser {
 	}
 
 	async parse(tokenizer) {
-		this.buffer = external_node_buffer_namespaceObject.Buffer.alloc(minimumBytes);
+		this.buffer = new Uint8Array(reasonableDetectionSizeInBytes);
 
 		// Keep reading until EOF if the file size is unknown.
 		if (tokenizer.fileInfo.size === undefined) {
@@ -39045,12 +39591,14 @@ class FileTypeParser {
 				while (tokenizer.position + 30 < tokenizer.fileInfo.size) {
 					await tokenizer.readBuffer(this.buffer, {length: 30});
 
+					const view = new DataView(this.buffer.buffer);
+
 					// https://en.wikipedia.org/wiki/Zip_(file_format)#File_headers
 					const zipHeader = {
-						compressedSize: this.buffer.readUInt32LE(18),
-						uncompressedSize: this.buffer.readUInt32LE(22),
-						filenameLength: this.buffer.readUInt16LE(26),
-						extraFieldLength: this.buffer.readUInt16LE(28),
+						compressedSize: view.getUint32(18, true),
+						uncompressedSize: view.getUint32(22, true),
+						filenameLength: view.getUint16(26, true),
+						extraFieldLength: view.getUint16(28, true),
 					};
 
 					zipHeader.filename = await tokenizer.readToken(new StringType(zipHeader.filenameLength, 'utf-8'));
@@ -39083,6 +39631,11 @@ class FileTypeParser {
 								return {
 									ext: 'xlsx',
 									mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+								};
+							case 'visio':
+								return {
+									ext: 'vsdx',
+									mime: 'application/vnd.visio',
 								};
 							default:
 								break;
@@ -39145,7 +39698,8 @@ class FileTypeParser {
 						while (nextHeaderIndex < 0 && (tokenizer.position < tokenizer.fileInfo.size)) {
 							await tokenizer.peekBuffer(this.buffer, {mayBeLess: true});
 
-							nextHeaderIndex = this.buffer.indexOf('504B0304', 0, 'hex');
+							nextHeaderIndex = indexOf(this.buffer, new Uint8Array([0x50, 0x4B, 0x03, 0x04]));
+
 							// Move position to the next header if found, skip the whole buffer otherwise
 							await tokenizer.ignore(nextHeaderIndex >= 0 ? nextHeaderIndex : this.buffer.length);
 						}
@@ -39154,7 +39708,7 @@ class FileTypeParser {
 					}
 				}
 			} catch (error) {
-				if (!(error instanceof EndOfStreamError)) {
+				if (!(error instanceof EndOfStreamError_EndOfStreamError)) {
 					throw error;
 				}
 			}
@@ -39168,7 +39722,7 @@ class FileTypeParser {
 		if (this.checkString('OggS')) {
 			// This is an OGG container
 			await tokenizer.ignore(28);
-			const type = external_node_buffer_namespaceObject.Buffer.alloc(8);
+			const type = new Uint8Array(8);
 			await tokenizer.readBuffer(type);
 
 			// Needs to be before `ogg` check
@@ -39249,7 +39803,7 @@ class FileTypeParser {
 		) {
 			// They all can have MIME `video/mp4` except `application/mp4` special-case which is hard to detect.
 			// For some cases, we're specific, everything else falls to `video/mp4` with `mp4` extension.
-			const brandMajor = this.buffer.toString('binary', 8, 12).replace('\0', ' ').trim();
+			const brandMajor = new StringType(4, 'latin1').get(this.buffer, 8).replace('\0', ' ').trim();
 			switch (brandMajor) {
 				case 'avif':
 				case 'avis':
@@ -39379,11 +39933,11 @@ class FileTypeParser {
 			try {
 				await tokenizer.ignore(1350);
 				const maxBufferSize = 10 * 1024 * 1024;
-				const buffer = external_node_buffer_namespaceObject.Buffer.alloc(Math.min(maxBufferSize, tokenizer.fileInfo.size));
+				const buffer = new Uint8Array(Math.min(maxBufferSize, tokenizer.fileInfo.size));
 				await tokenizer.readBuffer(buffer, {mayBeLess: true});
 
 				// Check if this is an Adobe Illustrator file
-				if (buffer.includes(external_node_buffer_namespaceObject.Buffer.from('AIPrivateData'))) {
+				if (includes(buffer, new TextEncoder().encode('AIPrivateData'))) {
 					return {
 						ext: 'ai',
 						mime: 'application/postscript',
@@ -39391,7 +39945,7 @@ class FileTypeParser {
 				}
 			} catch (error) {
 				// Swallow end of stream error if file is too small for the Adobe AI check
-				if (!(error instanceof EndOfStreamError)) {
+				if (!(error instanceof EndOfStreamError_EndOfStreamError)) {
 					throw error;
 				}
 			}
@@ -39438,27 +39992,31 @@ class FileTypeParser {
 			async function readField() {
 				const msb = await tokenizer.peekNumber(UINT8);
 				let mask = 0x80;
-				let ic = 0; // 0 = A, 1 = B, 2 = C, 3
-				// = D
+				let ic = 0; // 0 = A, 1 = B, 2 = C, 3 = D
 
 				while ((msb & mask) === 0 && mask !== 0) {
 					++ic;
 					mask >>= 1;
 				}
 
-				const id = external_node_buffer_namespaceObject.Buffer.alloc(ic + 1);
+				const id = new Uint8Array(ic + 1);
 				await tokenizer.readBuffer(id);
 				return id;
 			}
 
 			async function readElement() {
-				const id = await readField();
+				const idField = await readField();
 				const lengthField = await readField();
+
 				lengthField[0] ^= 0x80 >> (lengthField.length - 1);
 				const nrLength = Math.min(6, lengthField.length); // JavaScript can max read 6 bytes integer
+
+				const idView = new DataView(idField.buffer);
+				const lengthView = new DataView(lengthField.buffer, lengthField.length - nrLength, nrLength);
+
 				return {
-					id: id.readUIntBE(0, id.length),
-					len: lengthField.readUIntBE(lengthField.length - nrLength, nrLength),
+					id: getUintBE(idView),
+					len: getUintBE(lengthView),
 				};
 			}
 
@@ -39466,7 +40024,7 @@ class FileTypeParser {
 				while (children > 0) {
 					const element = await readElement();
 					if (element.id === 0x42_82) {
-						const rawValue = await tokenizer.readToken(new StringType(element.len, 'utf-8'));
+						const rawValue = await tokenizer.readToken(new StringType(element.len));
 						return rawValue.replaceAll(/\00.*$/g, ''); // Return DocType
 					}
 
@@ -39732,7 +40290,7 @@ class FileTypeParser {
 		}
 
 		if (this.checkString('AC')) {
-			const version = this.buffer.toString('binary', 2, 6);
+			const version = new StringType(4, 'latin1').get(this.buffer, 2);
 			if (version.match('^d*') && version >= 1000 && version <= 1050) {
 				return {
 					ext: 'dwg',
@@ -39799,7 +40357,7 @@ class FileTypeParser {
 			async function readChunkHeader() {
 				return {
 					length: await tokenizer.readToken(INT32_BE),
-					type: await tokenizer.readToken(new StringType(4, 'binary')),
+					type: await tokenizer.readToken(new StringType(4, 'latin1')),
 				};
 			}
 
@@ -39886,7 +40444,7 @@ class FileTypeParser {
 		// ASF_Header_Object first 80 bytes
 		if (this.check([0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11, 0xA6, 0xD9])) {
 			async function readHeader() {
-				const guid = external_node_buffer_namespaceObject.Buffer.alloc(16);
+				const guid = new Uint8Array(16);
 				await tokenizer.readBuffer(guid);
 				return {
 					id: guid,
@@ -39901,7 +40459,7 @@ class FileTypeParser {
 				let payload = header.size - 24;
 				if (_check(header.id, [0x91, 0x07, 0xDC, 0xB7, 0xB7, 0xA9, 0xCF, 0x11, 0x8E, 0xE6, 0x00, 0xC0, 0x0C, 0x20, 0x53, 0x65])) {
 					// Sync on Stream-Properties-Object (B7DC0791-A9B7-11CF-8EE6-00C00C205365)
-					const typeId = external_node_buffer_namespaceObject.Buffer.alloc(16);
+					const typeId = new Uint8Array(16);
 					payload -= await tokenizer.readBuffer(typeId);
 
 					if (_check(typeId, [0x40, 0x9E, 0x69, 0xF8, 0x4D, 0x5B, 0xCF, 0x11, 0xA8, 0xFD, 0x00, 0x80, 0x5F, 0x5C, 0x44, 0x2B])) {
@@ -40105,10 +40663,11 @@ class FileTypeParser {
 		}
 
 		if (this.check([0x04, 0x00, 0x00, 0x00]) && this.buffer.length >= 16) { // Rough & quick check Pickle/ASAR
-			const jsonSize = this.buffer.readUInt32LE(12);
+			const jsonSize = new DataView(this.buffer.buffer).getUint32(12, true);
+
 			if (jsonSize > 12 && this.buffer.length >= jsonSize + 16) {
 				try {
-					const header = this.buffer.slice(16, jsonSize + 16).toString();
+					const header = new TextDecoder().decode(this.buffer.slice(16, jsonSize + 16));
 					const json = JSON.parse(header);
 					// Check if Pickle is ASAR
 					if (json.files) { // Final check, assuring Pickle/ASAR format
@@ -40353,10 +40912,6 @@ class FileTypeParser {
 			};
 		}
 	}
-}
-
-async function fileTypeStream(readableStream, options = {}) {
-	return new FileTypeParser().toDetectionStream(readableStream, options);
 }
 
 const supportedExtensions = new Set(extensions);
@@ -43097,36 +43652,6 @@ module.exports = JSON.parse('{"name":"seek-bzip","version":"2.0.0","contributors
 /******/ 	};
 /******/ })();
 /******/ 
-/******/ /* webpack/runtime/create fake namespace object */
-/******/ (() => {
-/******/ 	var getProto = Object.getPrototypeOf ? (obj) => (Object.getPrototypeOf(obj)) : (obj) => (obj.__proto__);
-/******/ 	var leafPrototypes;
-/******/ 	// create a fake namespace object
-/******/ 	// mode & 1: value is a module id, require it
-/******/ 	// mode & 2: merge all properties of value into the ns
-/******/ 	// mode & 4: return value when already ns object
-/******/ 	// mode & 16: return value when it's Promise-like
-/******/ 	// mode & 8|1: behave like require
-/******/ 	__nccwpck_require__.t = function(value, mode) {
-/******/ 		if(mode & 1) value = this(value);
-/******/ 		if(mode & 8) return value;
-/******/ 		if(typeof value === 'object' && value) {
-/******/ 			if((mode & 4) && value.__esModule) return value;
-/******/ 			if((mode & 16) && typeof value.then === 'function') return value;
-/******/ 		}
-/******/ 		var ns = Object.create(null);
-/******/ 		__nccwpck_require__.r(ns);
-/******/ 		var def = {};
-/******/ 		leafPrototypes = leafPrototypes || [null, getProto({}), getProto([]), getProto(getProto)];
-/******/ 		for(var current = mode & 2 && value; typeof current == 'object' && !~leafPrototypes.indexOf(current); current = getProto(current)) {
-/******/ 			Object.getOwnPropertyNames(current).forEach((key) => (def[key] = () => (value[key])));
-/******/ 		}
-/******/ 		def['default'] = () => (value);
-/******/ 		__nccwpck_require__.d(ns, def);
-/******/ 		return ns;
-/******/ 	};
-/******/ })();
-/******/ 
 /******/ /* webpack/runtime/define property getters */
 /******/ (() => {
 /******/ 	// define getter functions for harmony exports
@@ -43142,17 +43667,6 @@ module.exports = JSON.parse('{"name":"seek-bzip","version":"2.0.0","contributors
 /******/ /* webpack/runtime/hasOwnProperty shorthand */
 /******/ (() => {
 /******/ 	__nccwpck_require__.o = (obj, prop) => (Object.prototype.hasOwnProperty.call(obj, prop))
-/******/ })();
-/******/ 
-/******/ /* webpack/runtime/make namespace object */
-/******/ (() => {
-/******/ 	// define __esModule on exports
-/******/ 	__nccwpck_require__.r = (exports) => {
-/******/ 		if(typeof Symbol !== 'undefined' && Symbol.toStringTag) {
-/******/ 			Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' });
-/******/ 		}
-/******/ 		Object.defineProperty(exports, '__esModule', { value: true });
-/******/ 	};
 /******/ })();
 /******/ 
 /******/ /* webpack/runtime/compat */
