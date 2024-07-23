@@ -1,3 +1,0 @@
-"DESCRIPTION","DURATION IN MS","NAME","PARENT SUITE","START TIME","STATUS","STOP TIME","SUB SUITE","SUITE","TEST CLASS","TEST METHOD"
-"","2103","html list","chromium","Tue Jul 23 07:10:03 UTC 2024","passed","Tue Jul 23 07:10:05 UTC 2024","","html-list.spec.ts","",""
-"","2111","allure list","chromium","Tue Jul 23 07:10:03 UTC 2024","passed","Tue Jul 23 07:10:05 UTC 2024","","allure-list.spec.ts","",""
