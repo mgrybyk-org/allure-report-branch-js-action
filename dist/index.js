@@ -37603,7 +37603,10 @@ try {
     // process allure report
     const lastRunId = await (0,_src_allure_js__WEBPACK_IMPORTED_MODULE_5__/* .getLastRunId */ .k4)(reportBaseDir);
     if (lastRunId) {
-        await _actions_io__WEBPACK_IMPORTED_MODULE_3__.cp(path__WEBPACK_IMPORTED_MODULE_0__.join(reportBaseDir, lastRunId, 'history'), sourceReportDir, { recursive: true });
+        const historyDir = path__WEBPACK_IMPORTED_MODULE_0__.join(reportBaseDir, lastRunId, 'history');
+        if (await (0,_src_isFileExists_js__WEBPACK_IMPORTED_MODULE_6__/* .isFileExist */ .e)(historyDir)) {
+            await _actions_io__WEBPACK_IMPORTED_MODULE_3__.cp(historyDir, sourceReportDir, { recursive: true });
+        }
     }
     await (0,_src_allure_js__WEBPACK_IMPORTED_MODULE_5__/* .writeExecutorJson */ .sp)(sourceReportDir, {
         runUniqueId,
