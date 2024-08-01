@@ -110,7 +110,10 @@ try {
     // process allure report
     const lastRunId = await getLastRunId(reportBaseDir)
     if (lastRunId) {
-        await io.cp(path.join(reportBaseDir, lastRunId, 'history'), sourceReportDir, { recursive: true })
+        const historyDir = path.join(reportBaseDir, lastRunId, 'history')
+        if (await isFileExist(historyDir)) {
+            await io.cp(historyDir, sourceReportDir, { recursive: true })
+        }
     }
     await writeExecutorJson(sourceReportDir, {
         runUniqueId,
