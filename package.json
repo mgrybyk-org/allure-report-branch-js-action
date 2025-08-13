@@ -1,6 +1,6 @@
 {
   "name": "allure-report-branch-js-action",
-  "version": "1.4.5",
+  "version": "1.4.6",
   "description": "Allure Report with history per branch",
   "main": "index.js",
   "type": "module",
@@ -9,7 +9,7 @@
     "generate_reports": "node prebuild.js",
     "build": "npm run generate_reports && ncc build index.ts --target es2022 --license licenses.txt",
     "check:compile": "npm run generate_reports && tsc",
-    "check:lint": "eslint --ext .ts --ignore-path .gitignore .",
+    "check:lint": "eslint .",
     "checks": "run-s check:*",
     "postinstall": "npm run generate_reports",
     "e2e": "playwright test",
@@ -26,26 +26,26 @@
   "author": "mgrybyk",
   "license": "MIT",
   "dependencies": {
-    "@actions/core": "^1.10.1",
-    "@actions/github": "^6.0.0",
+    "@actions/core": "^1.11.1",
+    "@actions/github": "^6.0.1",
     "@actions/io": "^1.1.3",
-    "@xhmikosr/decompress": "^10.0.1",
-    "@xhmikosr/decompress-targz": "^8.0.1"
+    "@xhmikosr/decompress": "^10.2.0",
+    "@xhmikosr/decompress-targz": "^8.1.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.45.3",
-    "@types/node": "^20.14.13",
-    "@typescript-eslint/eslint-plugin": "^7.18.0",
-    "@typescript-eslint/parser": "^7.18.0",
-    "@vercel/ncc": "^0.38.1",
-    "allure-playwright": "^2.15.1",
-    "eslint": "^8.57.0",
-    "eslint-config-prettier": "^9.1.0",
-    "eslint-plugin-prettier": "^5.2.1",
+    "@playwright/test": "^1.54.2",
+    "@types/node": "^20.19.10",
+    "@typescript-eslint/eslint-plugin": "^8.39.1",
+    "@typescript-eslint/parser": "^8.39.1",
+    "@vercel/ncc": "^0.38.3",
+    "allure-playwright": "^3.3.3",
+    "eslint": "^9.33.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
     "http-server": "^14.1.1",
-    "husky": "^9.1.4",
-    "npm-run-all": "^4.1.5",
-    "prettier": "^3.3.3",
-    "typescript": "^5.5.4"
+    "husky": "^9.1.7",
+    "npm-run-all2": "^8.0.4",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2"
   }
 }

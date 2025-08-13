@@ -13,5 +13,5 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "tests", "*.ts", ".eslintrc.cjs", "prebuild.js"]
+  "include": ["src", "tests", "*.ts", "eslint.config.js", "prebuild.js"]
 }
