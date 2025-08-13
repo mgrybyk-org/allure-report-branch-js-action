@@ -1,0 +1,1 @@
+/home/runner/work/allure-report-branch-js-action/allure-report-branch-js-action/tests/html-list.spec.ts-snapshots/html-list-1-chromium-linux.png is re-generated, writing actual.
