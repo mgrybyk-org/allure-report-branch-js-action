@@ -1,4 +1,4 @@
-TAG_MAJOR=v1
+TAG_MAJOR=v2
 git fetch
 git rebase
 git tag --delete $TAG_MAJOR

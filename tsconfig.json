@@ -2,7 +2,7 @@
   "compilerOptions": {
     "moduleResolution": "NodeNext",
     "module": "NodeNext",
-    "target": "ES2022",
+    "target": "ES2024",
     "skipLibCheck": true,
     "noEmit": true,
     /* Linting */
