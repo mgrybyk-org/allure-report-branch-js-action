@@ -26,7 +26,7 @@ jobs:
     steps:
       # To use this repository's private action,
       # you must check out the repository
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - run: npm ci --no-fund --no-audit --no-progress
       - run: npm run checks
@@ -41,7 +41,7 @@ jobs:
         run: npm run e2e -- --update-snapshots
       - name: git commit and push
         if: github.event_name == 'pull_request'
-        uses: mgrybyk-org/git-commit-pull-push-action@v1
+        uses: mgrybyk-org/git-commit-pull-push-action@v2
         with:
           branch: ${{ github.head_ref }}
           commit_message: Update screenshots
@@ -52,7 +52,7 @@ jobs:
         run: npm run e2e
 
       - name: Checkout gh-pages
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         if: always()
         continue-on-error: true
         with:
@@ -73,7 +73,7 @@ jobs:
           max_reports: 9
 
       - name: Git Commit and Push Action
-        uses: mgrybyk-org/git-commit-pull-push-action@v1
+        uses: mgrybyk-org/git-commit-pull-push-action@v2
         if: always()
         with:
           repository: gh-pages-dir
@@ -83,12 +83,12 @@ jobs:
       - name: Comment PR with Allure Report link
         if: ${{ always() && github.event_name == 'pull_request' && steps.self_test.outputs.report_url }}
         continue-on-error: true
-        uses: thollander/actions-comment-pull-request@v2
+        uses: thollander/actions-comment-pull-request@v3
         with:
           message: |
             Ubuntu run:
             ${{ steps.self_test.outputs.test_result_icon }} [Allure Report](${{ steps.self_test.outputs.report_url }}) | ${{ steps.self_test.outputs.test_result_passed }}/${{ steps.self_test.outputs.test_result_failed }}/${{ steps.self_test.outputs.test_result_total }} | [History](${{ steps.self_test.outputs.report_history_url }})
-          comment_tag: allure_self_test_ubuntu
+          comment-tag: allure_self_test_ubuntu
           mode: recreate
 
   test-win:
@@ -99,7 +99,7 @@ jobs:
     steps:
       # To use this repository's private action,
       # you must check out the repository
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - run: npm ci --no-fund --no-audit --no-progress
       - run: npm run build
@@ -109,7 +109,7 @@ jobs:
         run: npm run e2e -- --update-snapshots
 
       - name: Checkout gh-pages
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         if: always()
         continue-on-error: true
         with:
@@ -129,7 +129,7 @@ jobs:
           max_reports: 0
 
       - name: Git Commit and Push Action
-        uses: mgrybyk-org/git-commit-pull-push-action@v1
+        uses: mgrybyk-org/git-commit-pull-push-action@v2
         if: always()
         with:
           repository: gh-pages-dir
@@ -139,12 +139,12 @@ jobs:
       - name: Comment PR with Allure Report link
         if: ${{ always() && github.event_name == 'pull_request' && steps.self_test.outputs.report_url }}
         continue-on-error: true
-        uses: thollander/actions-comment-pull-request@v2
+        uses: thollander/actions-comment-pull-request@v3
         with:
           message: |
             Windows run:
             ${{ steps.self_test.outputs.test_result_icon }} [Allure Report](${{ steps.self_test.outputs.report_url }}) | ${{ steps.self_test.outputs.test_result_passed }}/${{ steps.self_test.outputs.test_result_failed }}/${{ steps.self_test.outputs.test_result_total }} | [History](${{ steps.self_test.outputs.report_history_url }})
-          comment_tag: allure_self_test_windows
+          comment-tag: allure_self_test_windows
           mode: recreate
 
   test-mac:
@@ -156,7 +156,7 @@ jobs:
     steps:
       # To use this repository's private action,
       # you must check out the repository
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - run: npm ci --no-fund --no-audit --no-progress
       - run: npm run build
@@ -166,7 +166,7 @@ jobs:
         run: npm run e2e -- --update-snapshots
 
       - name: Checkout gh-pages
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         if: always()
         continue-on-error: true
         with:
@@ -186,7 +186,7 @@ jobs:
           max_reports: 0
 
       - name: Git Commit and Push Action
-        uses: mgrybyk-org/git-commit-pull-push-action@v1
+        uses: mgrybyk-org/git-commit-pull-push-action@v2
         if: always()
         with:
           repository: gh-pages-dir
@@ -196,10 +196,10 @@ jobs:
       - name: Comment PR with Allure Report link
         if: ${{ always() && github.event_name == 'pull_request' && steps.self_test.outputs.report_url }}
         continue-on-error: true
-        uses: thollander/actions-comment-pull-request@v2
+        uses: thollander/actions-comment-pull-request@v3
         with:
           message: |
             macOS run:
             ${{ steps.self_test.outputs.test_result_icon }} [Allure Report](${{ steps.self_test.outputs.report_url }}) | ${{ steps.self_test.outputs.test_result_passed }}/${{ steps.self_test.outputs.test_result_failed }}/${{ steps.self_test.outputs.test_result_total }} | [History](${{ steps.self_test.outputs.report_history_url }})
-          comment_tag: allure_self_test_macos
+          comment-tag: allure_self_test_macos
           mode: recreate

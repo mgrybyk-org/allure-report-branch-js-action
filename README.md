@@ -1,6 +1,6 @@
 # allure-report-branch-js-action
 
-A **JavaScript** version of the Allure Report with history per branch (type: `node20`)
+A **JavaScript** version of the Allure Report with history per branch (type: `node24`)
 
 **Important: Requires java to be installed in prior to using the action!** 
 
@@ -110,4 +110,7 @@ GitHub runners ubuntu-latest, windows-latest, macos-latest have Java installed s
 
 ## Planned features
 
-- cleanup `data.json` file per report. Raise an issue if you're interested!
+Raise an issue if you're interested in any of these:
+
+- use [allure v3](https://www.npmjs.com/package/allure).
+- cleanup `data.json` file per report.
