@@ -2,6 +2,7 @@
   "links": [
     "..",
     "example-pr",
-    "main"
+    "main",
+    "node24-bump-deps"
   ]
 }
