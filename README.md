@@ -35,7 +35,7 @@ steps:
       path: gh-pages-dir # checkout path
 
   - name: Allure Report Action
-    uses: mgrybyk-org/allure-report-branch-js-action@v1
+    uses: mgrybyk-org/allure-report-branch-js-action@v2
     if: always()
     continue-on-error: true
     id: allure # used in comment to PR
@@ -45,7 +45,7 @@ steps:
       report_dir: 'allure-results'
 
   - name: Git Commit and Push Action
-    uses: mgrybyk-org/git-commit-pull-push-action@v1
+    uses: mgrybyk-org/git-commit-pull-push-action@v2
     if: always()
     with:
       repository: gh-pages-dir
