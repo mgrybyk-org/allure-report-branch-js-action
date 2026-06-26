@@ -1,1 +1,0 @@
-A snapshot doesn't exist at /Users/runner/work/allure-report-branch-js-action/allure-report-branch-js-action/tests/html-list.spec.ts-snapshots/html-list-1-chromium-darwin.png, writing actual.
