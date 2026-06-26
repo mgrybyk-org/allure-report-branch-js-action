@@ -27,7 +27,7 @@ permissions:
 
 steps:
   - name: Checkout gh-pages
-    uses: actions/checkout@v3
+    uses: actions/checkout@v5
     if: always()
     continue-on-error: true
     with:
