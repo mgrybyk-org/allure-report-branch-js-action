@@ -1,3 +1,0 @@
-"DESCRIPTION","DURATION IN MS","NAME","PARENT SUITE","START TIME","STATUS","STOP TIME","SUB SUITE","SUITE","TEST CLASS","TEST METHOD"
-"","1053","html list","chromium","2026-06-26","passed","2026-06-26","","html-list.spec.ts","",""
-"","1056","allure list","chromium","2026-06-26","passed","2026-06-26","","allure-list.spec.ts","",""
