@@ -37,6 +37,7 @@ try {
     const listDirsBranch = core.getInput('list_dirs_branch') == 'true'
     const branchCleanupEnabled = core.getInput('branch_cleanup_enabled') == 'true'
     const maxReports = parseInt(core.getInput('max_reports'), 10)
+    const ghPagesBaseUrlInput = core.getInput('gh_pages_base_url')
     const branchName = getBranchName(github.context.ref, github.context.payload.pull_request)
     const ghPagesBaseDir = path.join(ghPagesPath, baseDir)
     const reportBaseDir = path.join(ghPagesBaseDir, branchName, reportId)
@@ -50,8 +51,8 @@ try {
     const reportDir = path.join(reportBaseDir, runUniqueId)
 
     // urls
-    const githubActionRunUrl = `https://github.com/${github.context.repo.owner}/${github.context.repo.repo}/actions/runs/${github.context.runId}`
-    const ghPagesUrl = `https://${github.context.repo.owner}.github.io/${github.context.repo.repo}`
+    const githubActionRunUrl = `${github.context.serverUrl}/${github.context.repo.owner}/${github.context.repo.repo}/actions/runs/${github.context.runId}`
+    const ghPagesUrl = ghPagesBaseUrlInput || `https://${github.context.repo.owner}.github.io/${github.context.repo.repo}`
     const ghPagesBaseUrl = `${ghPagesUrl}/${baseDir}/${branchName}/${reportId}`.replaceAll(' ', '%20')
     const ghPagesReportUrl = `${ghPagesBaseUrl}/${runUniqueId}`.replaceAll(' ', '%20')
 

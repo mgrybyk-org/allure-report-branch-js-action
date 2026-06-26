@@ -33,6 +33,10 @@ inputs:
     description: 'Max reports to keep per branch/report. Set to 0 to disable cleanup.'
     required: false
     default: 100
+  gh_pages_base_url:
+    description: 'Base URL for GitHub Pages. Defaults to https://<owner>.github.io/<repo>. Set this for GitHub Enterprise Server.'
+    required: false
+    default: ''
 outputs:
   report_url:
     description: 'Published Allure Report url'
