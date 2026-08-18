@@ -1,10 +1,12 @@
 # allure-report-branch-js-action
 
-A **JavaScript** version of the Allure Report with history per branch (type: `node24`)
+A **JavaScript** version of the Allure Report (v2) with history per branch (type: `node24`)
 
 **Important: Requires java to be installed in prior to using the action!** 
 
-Docker version of the action: [allure-report-with-history-per-branch](https://github.com/marketplace/actions/allure-report-with-history-per-branch)
+Docker version of the action: [allure-report-with-history-per-branch](https://github.com/marketplace/actions/allure-report-with-history-per-branch) (deprecated)
+
+[NEW] Consider [allure-action](https://repo.maven.apache.org/maven2/io/qameta/allure/allure-commandline) **v3**. See [multi branch support discussion](https://github.com/orgs/allure-framework/discussions/3464).
 
 See examples:
 
