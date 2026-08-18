@@ -11313,7 +11313,13 @@ function processHeader (request, key, val) {
       } else if (typeof val[i] === 'object') {
         throw new InvalidArgumentError(`invalid ${key} header`)
       } else {
-        arr.push(`${val[i]}`)
+        // Coerce primitives (and reject unsafe coercions such as functions
+        // with a crafted toString/Symbol.toPrimitive).
+        const str = `${val[i]}`
+        if (!isValidHeaderValue(str)) {
+          throw new InvalidArgumentError(`invalid ${key} header`)
+        }
+        arr.push(str)
       }
     }
     val = arr
@@ -11324,7 +11330,12 @@ function processHeader (request, key, val) {
   } else if (val === null) {
     val = ''
   } else {
+    // Coerce primitives (and reject unsafe coercions such as functions
+    // with a crafted toString/Symbol.toPrimitive).
     val = `${val}`
+    if (!isValidHeaderValue(val)) {
+      throw new InvalidArgumentError(`invalid ${key} header`)
+    }
   }
 
   if (headerName === 'host') {
@@ -12696,6 +12707,7 @@ const {
   RequestContentLengthMismatchError,
   ResponseContentLengthMismatchError,
   RequestAbortedError,
+  InvalidArgumentError,
   HeadersTimeoutError,
   HeadersOverflowError,
   SocketError,
@@ -13679,8 +13691,16 @@ function writeH1 (client, request) {
     }
     body = bodyStream.stream
     contentLength = bodyStream.length
-  } else if (util.isBlobLike(body) && request.contentType == null && body.type) {
-    headers.push('content-type', body.type)
+  } else if (util.isBlobLike(body) && request.contentType == null) {
+    const contentType = body.type
+    if (contentType) {
+      const contentTypeValue = `${contentType}`
+      if (!util.isValidHeaderValue(contentTypeValue)) {
+        util.errorRequest(client, request, new InvalidArgumentError('invalid content-type header'))
+        return false
+      }
+      headers.push('content-type', contentTypeValue)
+    }
   }
 
   if (body && typeof body.read === 'function') {
@@ -17153,6 +17173,28 @@ function calculateRetryAfterHeader (retryAfter) {
   return new Date(retryAfter).getTime() - current
 }
 
+function validatePartialResponseContentLength (headers, range, statusCode, retryCount) {
+  const contentLength = headers['content-length']
+  if (contentLength == null) {
+    return null
+  }
+
+  if (!Number.isFinite(range.start) || !Number.isFinite(range.end)) {
+    return null
+  }
+
+  const length = Number(contentLength)
+  const expectedLength = range.end - range.start + 1
+  if (!Number.isFinite(length) || length !== expectedLength) {
+    return new RequestRetryError('Content-Length mismatch', statusCode, {
+      headers,
+      data: { count: retryCount }
+    })
+  }
+
+  return null
+}
+
 class RetryHandler {
   constructor (opts, handlers) {
     const { retryOptions, ...dispatchOpts } = opts
@@ -17367,6 +17409,12 @@ class RetryHandler {
         return false
       }
 
+      const contentLengthError = validatePartialResponseContentLength(headers, contentRange, statusCode, this.retryCount)
+      if (contentLengthError != null) {
+        this.abort(contentLengthError)
+        return false
+      }
+
       const { start, size, end = size - 1 } = contentRange
 
       assert(this.start === start, 'content-range mismatch')
@@ -17388,6 +17436,12 @@ class RetryHandler {
             resume,
             statusMessage
           )
+        }
+
+        const contentLengthError = validatePartialResponseContentLength(headers, range, statusCode, this.retryCount)
+        if (contentLengthError != null) {
+          this.abort(contentLengthError)
+          return false
         }
 
         const { start, size, end = size - 1 } = range
@@ -21634,7 +21688,7 @@ function validateCookiePath (path) {
 
     if (
       code < 0x20 || // exclude CTLs (0-31)
-      code === 0x7F || // DEL
+      code > 0x7E || // exclude DEL and non-ascii
       code === 0x3B // ;
     ) {
       throw new Error('Invalid cookie path')
@@ -21643,16 +21697,80 @@ function validateCookiePath (path) {
 }
 
 /**
- * I have no idea why these values aren't allowed to be honest,
- * but Deno tests these. - Khafra
+ * <let-dig> ::= <letter> | <digit>
+ *
+ * <letter> ::= any one of the 52 alphabetic characters A through Z in
+ * upper case and a through z in lower case
+ *
+ * <digit> ::= any one of the ten digits 0 through 9r
+ *
+ * @see https://www.rfc-editor.org/rfc/rfc1034#section-3.5
+ * @param {number} code
+ */
+function isLetterOrDigit (code) {
+  return (
+    (code >= 0x30 && code <= 0x39) || // 0-9
+    (code >= 0x41 && code <= 0x5A) || // A-Z
+    (code >= 0x61 && code <= 0x7A) // a-z
+  )
+}
+
+/**
+ * Validates a cookie domain against the "preferred name syntax".
+ *
+ * <domain>      ::= <subdomain> | " "
+ * <subdomain>   ::= <label> | <subdomain> "." <label>
+ * <label>       ::= <let-dig> [ [ <ldh-str> ] <let-dig> ]
+ * <ldh-str>     ::= <let-dig-hyp> | <let-dig-hyp> <ldh-str>
+ * <let-dig-hyp> ::= <let-dig> | "-"
+ *
+ * @see https://www.rfc-editor.org/rfc/rfc1034#section-3.5
+ * @see https://www.rfc-editor.org/rfc/rfc1123#section-2.1
+ * @see https://www.rfc-editor.org/rfc/rfc1035#section-2.3.4
  * @param {string} domain
  */
 function validateCookieDomain (domain) {
-  if (
-    domain.startsWith('-') ||
-    domain.endsWith('.') ||
-    domain.endsWith('-')
-  ) {
+  // <domain> ::= <subdomain> | " "
+  if (domain === ' ') {
+    return
+  }
+
+  if (domain.length > 255) {
+    throw new Error('Invalid cookie domain')
+  }
+
+  let labelLength = 0
+
+  for (let i = 0; i < domain.length; ++i) {
+    const code = domain.charCodeAt(i)
+
+    if (code === 0x2E) {
+      if (labelLength === 0) {
+        throw new Error('Invalid cookie domain')
+      }
+
+      if (domain.charCodeAt(i - 1) === 0x2D) { // "-"
+        throw new Error('Invalid cookie domain')
+      }
+
+      labelLength = 0
+      continue
+    }
+
+    if (labelLength === 0 && !isLetterOrDigit(code)) {
+      throw new Error('Invalid cookie domain')
+    }
+
+    if (!isLetterOrDigit(code) && code !== 0x2D) { // "-"
+      throw new Error('Invalid cookie domain')
+    }
+
+    if (++labelLength > 63) {
+      throw new Error('Invalid cookie domain')
+    }
+  }
+
+  if (labelLength === 0 || domain.charCodeAt(domain.length - 1) === 0x2D) { // "-"
     throw new Error('Invalid cookie domain')
   }
 }
@@ -21795,7 +21913,13 @@ function stringify (cookie) {
 
     const [key, ...value] = part.split('=')
 
-    out.push(`${key.trim()}=${value.join('=')}`)
+    const trimmedKey = key.trim()
+    const joinedValue = value.join('=')
+
+    validateCookieName(trimmedKey)
+    validateCookieValue(joinedValue)
+
+    out.push(`${trimmedKey}=${joinedValue}`)
   }
 
   return out.join('; ')
@@ -37217,7 +37341,7 @@ __nccwpck_require__.a(module, async (__webpack_handle_async_dependencies__, __we
 /* harmony import */ var _actions_github__WEBPACK_IMPORTED_MODULE_2__ = __nccwpck_require__(157);
 /* harmony import */ var _actions_io__WEBPACK_IMPORTED_MODULE_3__ = __nccwpck_require__(8701);
 /* harmony import */ var _src_writeFolderListing_js__WEBPACK_IMPORTED_MODULE_4__ = __nccwpck_require__(5531);
-/* harmony import */ var _src_allure_js__WEBPACK_IMPORTED_MODULE_5__ = __nccwpck_require__(9995);
+/* harmony import */ var _src_allure_js__WEBPACK_IMPORTED_MODULE_5__ = __nccwpck_require__(4546);
 /* harmony import */ var _src_helpers_js__WEBPACK_IMPORTED_MODULE_9__ = __nccwpck_require__(1302);
 /* harmony import */ var _src_isFileExists_js__WEBPACK_IMPORTED_MODULE_6__ = __nccwpck_require__(7121);
 /* harmony import */ var _src_cleanup_js__WEBPACK_IMPORTED_MODULE_7__ = __nccwpck_require__(2608);
@@ -37233,7 +37357,7 @@ __nccwpck_require__.a(module, async (__webpack_handle_async_dependencies__, __we
 
 
 const baseDir = 'allure-action';
-const allureRelease = '2.43.0';
+const allureRelease = '2.45.0';
 const allureCliDir = 'allure-cli';
 const allureArchiveName = 'allure-commandline.tgz';
 try {
@@ -37349,7 +37473,7 @@ __webpack_async_result__();
 
 /***/ }),
 
-/***/ 9995:
+/***/ 4546:
 /***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
 
 
@@ -37378,6 +37502,10 @@ var external_path_ = __nccwpck_require__(6928);
 const external_process_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("process");
 // EXTERNAL MODULE: external "node:buffer"
 var external_node_buffer_ = __nccwpck_require__(4573);
+;// CONCATENATED MODULE: external "node:fs"
+const external_node_fs_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:fs");
+;// CONCATENATED MODULE: external "node:fs/promises"
+const external_node_fs_promises_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:fs/promises");
 ;// CONCATENATED MODULE: external "node:path"
 const external_node_path_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:path");
 ;// CONCATENATED MODULE: external "node:process"
@@ -42975,32 +43103,41 @@ const decompressTar = () => async input => {
 	const extract = tar_stream.extract();
 	const files = [];
 
-	extract.on('entry', (header, stream, cb) => {
-		const chunk = [];
-
-		stream.on('data', data => chunk.push(data));
-		stream.on('end', () => {
-			const file = {
-				data: external_node_buffer_.Buffer.concat(chunk),
-				mode: header.mode,
-				mtime: header.mtime,
-				path: header.name,
-				type: header.type,
-			};
-
-			if (header.type === 'symlink' || header.type === 'link') {
-				file.linkname = header.linkname;
-			}
-
-			files.push(file);
-			cb();
-		});
-	});
-
 	const promise = new Promise((resolve, reject) => {
 		if (!external_node_buffer_.Buffer.isBuffer(input)) {
 			input.on('error', reject);
 		}
+
+		extract.on('entry', (header, stream, cb) => {
+			// A directory entry has no body; a nonzero size never emits 'end' and hangs the parse
+			if (header.type === 'directory' && header.size > 0) {
+				stream.resume();
+				reject(new Error('Refusing to extract a directory entry with a non-zero size'));
+				return;
+			}
+
+			const chunk = [];
+
+			// tar-stream destroys the entry stream on malformed input; without this it throws uncaught
+			stream.on('error', reject);
+			stream.on('data', data => chunk.push(data));
+			stream.on('end', () => {
+				const file = {
+					data: external_node_buffer_.Buffer.concat(chunk),
+					mode: header.mode,
+					mtime: header.mtime,
+					path: header.name,
+					type: header.type,
+				};
+
+				if (header.type === 'symlink' || header.type === 'link') {
+					file.linkname = header.linkname;
+				}
+
+				files.push(file);
+				cb();
+			});
+		});
 
 		extract.on('finish', () => resolve(files));
 		extract.on('error', reject);
@@ -43578,6 +43715,9 @@ var strip_dirs = __nccwpck_require__(5245);
 ;// CONCATENATED MODULE: ./node_modules/@xhmikosr/decompress/index.js
 
 
+// realpath follows symlinks, so a target that escapes via a symlink is caught
+
+
 
 
 
@@ -43590,13 +43730,12 @@ var strip_dirs = __nccwpck_require__(5245);
 const decompress_link = (0,external_node_util_.promisify)(graceful_fs.link);
 const mkdir = (0,external_node_util_.promisify)(graceful_fs.mkdir);
 const readFile = (0,external_node_util_.promisify)(graceful_fs.readFile);
-const readlink = (0,external_node_util_.promisify)(graceful_fs.readlink);
-const realpath = (0,external_node_util_.promisify)(graceful_fs.realpath);
 const symlink = (0,external_node_util_.promisify)(graceful_fs.symlink);
 const utimes = (0,external_node_util_.promisify)(graceful_fs.utimes);
-const writeFile = (0,external_node_util_.promisify)(graceful_fs.writeFile);
 
 const IS_WINDOWS = external_node_process_namespaceObject.platform === 'win32';
+// Names Windows treats as device files, with or without an extension (`NUL.txt` is still `NUL`)
+const WINDOWS_RESERVED_NAME = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
 
 const runPlugins = async (input, options) => {
 	if (options.plugins.length === 0) {
@@ -43614,11 +43753,43 @@ const isInsideOutput = (target, root) => {
 	return rel === '' || (rel !== '..' && !rel.startsWith(`..${external_node_path_namespaceObject.sep}`) && !external_node_path_namespaceObject.isAbsolute(rel));
 };
 
+const isUnsafeWindowsSegment = segment => {
+	// `.`/`..`/empty segments are handled by the traversal checks, not here
+	if (segment === '' || segment === '.' || segment === '..') {
+		return false;
+	}
+
+	// `:` opens an NTFS alternate data stream; the rest are invalid Windows filename chars
+	if (/[<>:"|?*]/.test(segment) || [...segment].some(character => character.codePointAt(0) < 0x20)) {
+		return true;
+	}
+
+	return WINDOWS_RESERVED_NAME.test(segment);
+};
+
+const assertSafeEntryPath = (entryPath, isWindows = IS_WINDOWS) => {
+	// fs rejects NUL too, but not before mkdir has created parent directories
+	if (entryPath.includes('\0')) {
+		throw new Error(`Refusing to extract a path containing a NUL byte: ${entryPath}`);
+	}
+
+	// Alternate data streams, reserved device names and forbidden characters are
+	// all legal on POSIX, so reject them on Windows only
+	if (!isWindows) {
+		return;
+	}
+
+	const unsafe = entryPath.split(/[/\\]/).find(segment => isUnsafeWindowsSegment(segment));
+	if (unsafe !== undefined) {
+		throw new Error(`Refusing to extract a path that is unsafe on Windows: ${entryPath}`);
+	}
+};
+
 const safeMakeDir = async (dir, realOutputPath) => {
 	let realParentPath;
 
 	try {
-		realParentPath = await realpath(dir);
+		realParentPath = await (0,external_node_fs_promises_namespaceObject.realpath)(dir);
 	} catch {
 		const parent = external_node_path_namespaceObject.dirname(dir);
 		realParentPath = await safeMakeDir(parent, realOutputPath);
@@ -43629,7 +43800,7 @@ const safeMakeDir = async (dir, realOutputPath) => {
 	}
 
 	await mkdir(dir, {recursive: true});
-	return realpath(dir);
+	return (0,external_node_fs_promises_namespaceObject.realpath)(dir);
 };
 
 const ensureLinkTargetInsideOutput = async (linkname, linkBase, realOutputPath) => {
@@ -43642,7 +43813,7 @@ const ensureLinkTargetInsideOutput = async (linkname, linkBase, realOutputPath) 
 	// An existing target may itself be a symlink that escapes, so check its real path
 	let realTarget;
 	try {
-		realTarget = await realpath(target);
+		realTarget = await (0,external_node_fs_promises_namespaceObject.realpath)(target);
 	} catch {
 		// Dangling link; the path check above covers it
 		return target;
@@ -43655,23 +43826,51 @@ const ensureLinkTargetInsideOutput = async (linkname, linkBase, realOutputPath) 
 	return target;
 };
 
-const preventWritingThroughSymlink = async (destination, realOutputPath) => {
-	let symlinkPointsTo = null;
+const assertNotSymlink = async target => {
+	// link() would clone the symlink inode, relocating its relative target outside
+	const stats = await (0,external_node_fs_promises_namespaceObject.lstat)(target).catch(() => null);
 
-	try {
-		symlinkPointsTo = await readlink(destination);
-	} catch {
-		// Either no file exists, or it's not a symlink. In either case, this is
-		// not an escape we need to worry about in this phase.
+	if (stats && stats.isSymbolicLink()) {
+		throw new Error(`Refusing to hardlink to a symlink: ${target}`);
 	}
-
-	if (symlinkPointsTo) {
-		throw new Error('Refusing to write into a symlink');
-	}
-
-	// No symlink exists at `destination`, so we can continue
-	return realOutputPath;
 };
+
+// realpath the longest existing prefix (follows sibling symlinks), then append the missing tail
+const resolveMaybeMissing = async target => {
+	let existing = target;
+	const tail = [];
+
+	for (;;) {
+		try {
+			// eslint-disable-next-line no-await-in-loop
+			return external_node_path_namespaceObject.join(await (0,external_node_fs_promises_namespaceObject.realpath)(existing), ...tail.toReversed());
+		} catch {
+			const parent = external_node_path_namespaceObject.dirname(existing);
+			if (parent === existing) {
+				return target;
+			}
+
+			tail.push(external_node_path_namespaceObject.basename(existing));
+			existing = parent;
+		}
+	}
+};
+
+// A self-referential linkname resolves inside lexically but escapes via the kernel
+const assertSymlinkResolvesInside = async (dest, linkname, realOutputPath) => {
+	// Keep the raw linkname so its symlink components aren't collapsed
+	const rawTarget = external_node_path_namespaceObject.isAbsolute(linkname) ? linkname : external_node_path_namespaceObject.dirname(dest) + external_node_path_namespaceObject.sep + linkname;
+	const resolved = await resolveMaybeMissing(rawTarget);
+
+	if (!isInsideOutput(resolved, realOutputPath)) {
+		await (0,external_node_fs_promises_namespaceObject.unlink)(dest).catch(() => null);
+		throw new Error(`Refusing to keep a symlink that escapes the output directory: ${dest}`);
+	}
+};
+
+// Files, then symlinks, then hardlinks: a hardlink may target a symlink
+const isSymlink = entry => entry.type === 'symlink' && !IS_WINDOWS;
+const isHardlink = entry => entry.type === 'link' || (entry.type === 'symlink' && IS_WINDOWS);
 
 const extractFile = async (input, output, options) => {
 	let entries = await runPlugins(input, options);
@@ -43699,13 +43898,26 @@ const extractFile = async (input, output, options) => {
 		return entries;
 	}
 
+	// Two entries at one path let a symlink and a write race the same destination
+	const seenPaths = new Set();
+	for (const entry of entries) {
+		const key = IS_WINDOWS ? entry.path.toLowerCase() : entry.path;
+		if (seenPaths.has(key)) {
+			throw new Error(`Refusing to extract an archive with a duplicate entry path: ${entry.path}`);
+		}
+
+		seenPaths.add(key);
+	}
+
 	await mkdir(output, {recursive: true});
-	const realOutputPath = await realpath(output);
+	const realOutputPath = await (0,external_node_fs_promises_namespaceObject.realpath)(output);
 
 	const umask = external_node_process_namespaceObject.umask();
 	const now = new Date();
 
 	const extractEntry = async entry => {
+		assertSafeEntryPath(entry.path);
+
 		const dest = external_node_path_namespaceObject.join(output, entry.path);
 
 		if (entry.type === 'directory') {
@@ -43717,7 +43929,7 @@ const extractFile = async (input, output, options) => {
 		// Attempt to ensure parent directory exists (failing if it's outside the output dir)
 		await safeMakeDir(external_node_path_namespaceObject.dirname(dest), realOutputPath);
 
-		const realDestinationDir = await realpath(external_node_path_namespaceObject.dirname(dest));
+		const realDestinationDir = await (0,external_node_fs_promises_namespaceObject.realpath)(external_node_path_namespaceObject.dirname(dest));
 		if (!isInsideOutput(realDestinationDir, realOutputPath)) {
 			throw new Error(`Refusing to write outside output directory: ${realDestinationDir}`);
 		}
@@ -43725,32 +43937,42 @@ const extractFile = async (input, output, options) => {
 		if (entry.type === 'link') {
 			// Hardlink target is relative to the extraction root
 			const target = await ensureLinkTargetInsideOutput(entry.linkname, realOutputPath, realOutputPath);
+			await assertNotSymlink(target);
 			await decompress_link(target, dest);
 		} else if (entry.type === 'symlink' && IS_WINDOWS) {
-			// No symlinks on Windows; emulate with a hardlink relative to the link's dir
-			const target = await ensureLinkTargetInsideOutput(entry.linkname, external_node_path_namespaceObject.dirname(dest), realOutputPath);
+			// No symlinks on Windows; emulate with a hardlink relative to the link's real dir
+			const target = await ensureLinkTargetInsideOutput(entry.linkname, realDestinationDir, realOutputPath);
+			await assertNotSymlink(target);
 			await decompress_link(target, dest);
 		} else if (entry.type === 'symlink') {
-			// Target is relative to the link's own dir
-			await ensureLinkTargetInsideOutput(entry.linkname, external_node_path_namespaceObject.dirname(dest), realOutputPath);
+			// Lexical fast-reject; assertSymlinkResolvesInside is the real guard
+			await ensureLinkTargetInsideOutput(entry.linkname, realDestinationDir, realOutputPath);
 			await symlink(entry.linkname, dest);
 		} else {
-			// Guard the write itself, not just `file`, so flavors like contiguous-file can't bypass it
-			await preventWritingThroughSymlink(dest, realOutputPath);
 			// Never honor setuid/setgid/sticky bits from an archive
 			const mode = (entry.mode & 0o777) & ~umask; // eslint-disable-line no-bitwise
-			await writeFile(dest, entry.data, {mode});
-			await utimes(dest, now, entry.mtime);
+			// O_NOFOLLOW so a symlink planted at dest can't redirect the write
+			const flags = external_node_fs_namespaceObject.constants.O_WRONLY | external_node_fs_namespaceObject.constants.O_CREAT | external_node_fs_namespaceObject.constants.O_TRUNC | (external_node_fs_namespaceObject.constants.O_NOFOLLOW || 0); // eslint-disable-line no-bitwise
+			const handle = await (0,external_node_fs_promises_namespaceObject.open)(dest, flags, mode).catch(error => {
+				if (error.code === 'ELOOP') {
+					throw new Error('Refusing to write into a symlink');
+				}
+
+				throw error;
+			});
+			try {
+				await handle.writeFile(entry.data);
+				await handle.utimes(now, entry.mtime);
+			} finally {
+				await handle.close();
+			}
 		}
 	};
 
-	// Hardlinks need their target written first, so extract everything else before linking
-	const isHardlink = entry => entry.type === 'link' || (entry.type === 'symlink' && IS_WINDOWS);
-
 	const results = Array.from({length: entries.length});
-	const settle = async i => {
+	const settle = async (i, task) => {
 		try {
-			await extractEntry(entries[i]);
+			await task(entries[i]);
 			results[i] = {status: 'fulfilled'};
 		} catch (error) {
 			results[i] = {status: 'rejected', reason: error};
@@ -43758,8 +43980,15 @@ const extractFile = async (input, output, options) => {
 	};
 
 	const order = [...entries.keys()];
-	await Promise.all(order.filter(i => !isHardlink(entries[i])).map(i => settle(i)));
-	await Promise.all(order.filter(i => isHardlink(entries[i])).map(i => settle(i)));
+	const symlinkOrder = order.filter(i => isSymlink(entries[i]));
+	await Promise.all(order.filter(i => !isSymlink(entries[i]) && !isHardlink(entries[i])).map(i => settle(i, extractEntry)));
+	await Promise.all(symlinkOrder.map(i => settle(i, extractEntry)));
+	await Promise.all(order.filter(i => isHardlink(entries[i])).map(i => settle(i, extractEntry)));
+
+	// Now every symlink exists, resolve chains for real
+	await Promise.all(symlinkOrder
+		.filter(i => results[i].status === 'fulfilled')
+		.map(i => settle(i, entry => assertSymlinkResolvesInside(external_node_path_namespaceObject.join(output, entry.path), entry.linkname, realOutputPath))));
 
 	// Report the first failure in entry order, not whichever rejected first
 	const failure = results.find(result => result.status === 'rejected');
@@ -44505,16 +44734,17 @@ function format(obj) {
  * Parse a `Content-Type` header.
  */
 function parse(header, options) {
+    const stopChar = options?.comma === true ? COMMA : 65536; // Sentinel for "no stop char".
     const len = header.length;
-    let index = skipOWS(header, 0, len);
+    let index = skipOWS(header, options?.start ?? 0, len);
     const valueStart = index;
-    index = skipValue(header, index, len);
+    index = skipValue(header, index, len, stopChar);
     const valueEnd = trailingOWS(header, valueStart, index);
     const type = header.slice(valueStart, valueEnd).toLowerCase();
-    const parameters = options?.parameters === false
-        ? new NullObject()
-        : parseParameters(header, index, len);
-    return { type, parameters };
+    if (options?.parameters === false) {
+        return { type, index, parameters: new NullObject() };
+    }
+    return parseParameters(header, type, index, len, stopChar);
 }
 const SP = 32; // " "
 const HTAB = 9; // "\t"
@@ -44522,16 +44752,21 @@ const SEMI = 59; // ";"
 const EQ = 61; // "="
 const DQUOTE = 34; // '"'
 const BSLASH = 92; // "\\"
+const COMMA = 44; // ","
 /**
  * Parses the parameters of a `Content-Type` header starting at the given index.
  */
-function parseParameters(header, index, len) {
+function parseParameters(header, type, index, len, stopChar) {
     const parameters = new NullObject();
     parameter: while (index < len) {
+        if (header.charCodeAt(index) === stopChar)
+            break;
         index = skipOWS(header, index + 1 /* Skip over ; */, len);
         const keyStart = index;
         while (index < len) {
             const code = header.charCodeAt(index);
+            if (code === stopChar)
+                break parameter;
             if (code === SEMI)
                 continue parameter;
             if (code === EQ) {
@@ -44544,7 +44779,7 @@ function parseParameters(header, index, len) {
                     while (index < len) {
                         const code = header.charCodeAt(index++);
                         if (code === DQUOTE) {
-                            index = skipValue(header, index, len);
+                            index = skipValue(header, index, len, stopChar);
                             if (parameters[key] === undefined)
                                 parameters[key] = value;
                             break;
@@ -44558,7 +44793,7 @@ function parseParameters(header, index, len) {
                     continue parameter;
                 }
                 const valueStart = index;
-                index = skipValue(header, index, len);
+                index = skipValue(header, index, len, stopChar);
                 if (parameters[key] === undefined) {
                     const valueEnd = trailingOWS(header, valueStart, index);
                     parameters[key] = header.slice(valueStart, valueEnd);
@@ -44568,15 +44803,15 @@ function parseParameters(header, index, len) {
             index++;
         }
     }
-    return parameters;
+    return { type, index, parameters };
 }
 /**
- * Skip over characters until a semicolon.
+ * Skip over characters until a semicolon or other exit character.
  */
-function skipValue(str, index, len) {
+function skipValue(str, index, len, stopChar) {
     while (index < len) {
-        const char = str.charCodeAt(index);
-        if (char === SEMI)
+        const code = str.charCodeAt(index);
+        if (code === SEMI || code === stopChar)
             break;
         index++;
     }
@@ -47775,14 +48010,269 @@ const originalStringify = JSON.stringify;
 const originalParse = JSON.parse;
 const customFormat = /^-?\d+n$/;
 
-const bigIntsStringify = /([\[:])?"(-?\d+)n"($|([\\n]|\s)*(\s|[\\n])*[,\}\]])/g;
-const noiseStringify =
-  /([\[:])?("-?\d+n+)n("$|"([\\n]|\s)*(\s|[\\n])*[,\}\]])/g;
+const bigIntsStringify = /([\[:])?"(-?\d+)n"($|\s*[,\}\]])/g;
+const noiseStringify = /([\[:])?("-?\d+n+)n("$|"\s*[,\}\]])/g;
 
 /**
  * @typedef {(this: any, key: string | number | undefined, value: any) => any} Replacer
  * @typedef {(key: string | number | undefined, value: any, context?: { source: string }) => any} Reviver
  */
+
+/**
+ * Checks if a value is unstringifiable according to native JSON.stringify rules.
+ *
+ * @param {any} val The value to check.
+ * @returns {boolean} True if the value is undefined, a function, or a symbol.
+ */
+const isUnstringifiable = (val) =>
+  val === undefined || typeof val === "function" || typeof val === "symbol";
+
+/**
+ * Checks if a value is a native JSON.rawJSON object (Node.js 22+).
+ *
+ * @param {any} val The value to check.
+ * @returns {boolean} True if the value is a RawJSON instance.
+ */
+const isRawJSON = (val) =>
+  val !== null &&
+  typeof val === "object" &&
+  val.constructor &&
+  val.constructor.name === "RawJSON";
+
+/**
+ * Iteratively converts a JS value to a JSON string.
+ * Used as a fallback when the native JSON.stringify hits the Maximum Call Stack size.
+ * Fully compliant with JSON formatting (space), replacers, and toJSON behaviors.
+ *
+ * @param {any} rootValue The value to stringify.
+ * @param {Replacer | Array<string | number> | null} [replacer] User's custom replacer function.
+ * @param {string | number} [spaceParam] Indentation for pretty-printing.
+ * @returns {string | undefined} The generated JSON string.
+ */
+const stringifyIteratively = (rootValue, replacer, spaceParam) => {
+  let space = "";
+
+  if (typeof spaceParam === "number") {
+    space = " ".repeat(Math.min(10, Math.max(0, Math.floor(spaceParam))));
+  } else if (typeof spaceParam === "string") {
+    space = spaceParam.slice(0, 10);
+  }
+
+  const isFunctionReplacer = typeof replacer === "function";
+  const propertyList = Array.isArray(replacer)
+    ? new Set(replacer.map(String))
+    : null;
+
+  /**
+   * Prepares a value for stringification by resolving toJSON, handling BigInts,
+   * applying custom replacers, and unwrapping primitive objects.
+   *
+   * @param {object|Array} parent The parent object or array holding the value.
+   * @param {string} key The key associated with the value.
+   * @param {any} val The raw value to process.
+   * @returns {any} The processed value ready for stringification.
+   */
+  const prepareVal = (parent, key, val) => {
+    const isObject = val !== null && typeof val === "object";
+    const hasToJSON = isObject && typeof val.toJSON === "function";
+
+    if (hasToJSON) {
+      val = val.toJSON(key);
+    }
+
+    const isNoise = typeof val === "string" && noiseValue.test(val);
+
+    if (isNoise) return val + "n";
+
+    const isBigInt = typeof val === "bigint";
+
+    if (isBigInt) {
+      const supportsRawJSON = "rawJSON" in JSON;
+
+      if (supportsRawJSON) return JSON.rawJSON(val.toString());
+
+      return val.toString() + "n";
+    }
+
+    if (isFunctionReplacer) {
+      val = replacer.call(parent, key, val);
+    }
+
+    const isPostReplacerObject = val !== null && typeof val === "object";
+
+    if (isPostReplacerObject) {
+      const isPrimitiveWrapper =
+        val instanceof Number ||
+        val instanceof String ||
+        val instanceof Boolean;
+
+      if (isPrimitiveWrapper) {
+        val = val.valueOf();
+      }
+    }
+
+    return val;
+  };
+
+  const rootProcessed = prepareVal({ "": rootValue }, "", rootValue);
+
+  if (isUnstringifiable(rootProcessed)) {
+    return undefined;
+  }
+
+  const isRootPrimitive =
+    rootProcessed === null || typeof rootProcessed !== "object";
+  const isRootNativeRawJSON = isRawJSON(rootProcessed);
+
+  if (isRootPrimitive || isRootNativeRawJSON) {
+    return originalStringify(rootProcessed);
+  }
+
+  const chunks = [];
+  let level = 0;
+
+  const stack = [
+    {
+      parent: { "": rootProcessed },
+      key: "",
+      val: rootProcessed,
+      isArray: Array.isArray(rootProcessed),
+      keys: Array.isArray(rootProcessed) ? null : Object.keys(rootProcessed),
+      index: 0,
+      first: true,
+    },
+  ];
+
+  const visited = new WeakSet([rootProcessed]);
+
+  while (stack.length > 0) {
+    const node = stack[stack.length - 1];
+
+    if (node.index === 0) {
+      chunks.push(node.isArray ? "[" : "{");
+      level++;
+    }
+
+    let isDone = false;
+
+    if (node.isArray) {
+      if (node.index < node.val.length) {
+        if (!node.first) chunks.push(",");
+
+        if (space) chunks.push("\n" + space.repeat(level));
+
+        const childRaw = node.val[node.index];
+        const childVal = prepareVal(node.val, String(node.index), childRaw);
+
+        if (isUnstringifiable(childVal)) {
+          chunks.push("null");
+          node.first = false;
+          node.index++;
+        } else {
+          const isComplexObject =
+            childVal !== null && typeof childVal === "object";
+          const isNativeRaw = isRawJSON(childVal);
+
+          if (isComplexObject && !isNativeRaw) {
+            if (visited.has(childVal)) {
+              throw new TypeError("Converting circular structure to JSON");
+            }
+
+            visited.add(childVal);
+
+            stack.push({
+              parent: node.val,
+              key: String(node.index),
+              val: childVal,
+              isArray: Array.isArray(childVal),
+              keys: Array.isArray(childVal) ? null : Object.keys(childVal),
+              index: 0,
+              first: true,
+            });
+
+            node.first = false;
+            node.index++;
+          } else {
+            chunks.push(originalStringify(childVal));
+            node.first = false;
+            node.index++;
+          }
+        }
+      } else {
+        isDone = true;
+      }
+    } else {
+      while (node.index < node.keys.length) {
+        const k = node.keys[node.index++];
+
+        const isFilteredOutByArray = propertyList && !propertyList.has(k);
+
+        if (isFilteredOutByArray) continue;
+
+        const childRaw = node.val[k];
+        const childVal = prepareVal(node.val, k, childRaw);
+
+        if (isUnstringifiable(childVal)) continue;
+
+        if (!node.first) chunks.push(",");
+
+        if (space) {
+          chunks.push("\n" + space.repeat(level) + originalStringify(k) + ": ");
+        } else {
+          chunks.push(originalStringify(k) + ":");
+        }
+
+        const isComplexObject =
+          childVal !== null && typeof childVal === "object";
+        const isNativeRaw = isRawJSON(childVal);
+
+        if (isComplexObject && !isNativeRaw) {
+          if (visited.has(childVal)) {
+            throw new TypeError("Converting circular structure to JSON");
+          }
+
+          visited.add(childVal);
+
+          stack.push({
+            parent: node.val,
+            key: k,
+            val: childVal,
+            isArray: Array.isArray(childVal),
+            keys: Array.isArray(childVal) ? null : Object.keys(childVal),
+            index: 0,
+            first: true,
+          });
+
+          node.first = false;
+
+          break; // Stop current loop level to process the newly pushed stack node
+        } else {
+          chunks.push(originalStringify(childVal));
+          node.first = false;
+        }
+      }
+
+      const isNodeFullyProcessed =
+        node.index >= node.keys.length && stack[stack.length - 1] === node;
+
+      if (isNodeFullyProcessed) {
+        isDone = true;
+      }
+    }
+
+    if (isDone) {
+      level--;
+
+      if (!node.first && space) chunks.push("\n" + space.repeat(level));
+
+      chunks.push(node.isArray ? "]" : "}");
+      visited.delete(node.val);
+      stack.pop();
+    }
+  }
+
+  return chunks.join("");
+};
 
 /**
  * Converts a JavaScript value to a JSON string.
@@ -47795,55 +48285,87 @@ const noiseStringify =
  *
  * @param {*} value The value to convert to a JSON string.
  * @param {Replacer | Array<string | number> | null} [replacer]
- *   A function that alters the behavior of the stringification process,
- *   or an array of strings/numbers to indicate properties to exclude.
+ * A function that alters the behavior of the stringification process,
+ * or an array of strings/numbers to indicate properties to exclude.
  * @param {string | number} [space]
- *   A string or number to specify indentation or pretty-printing.
+ * A string or number to specify indentation or pretty-printing.
  * @returns {string} The JSON string representation.
  */
 const JSONStringify = (value, replacer, space) => {
-  if ("rawJSON" in JSON) {
-    return originalStringify(
+  try {
+    const supportsRawJSON = "rawJSON" in JSON;
+
+    if (supportsRawJSON) {
+      return originalStringify(
+        value,
+        (key, val) => {
+          if (typeof val === "bigint") return JSON.rawJSON(val.toString());
+
+          const hasFunctionReplacer = typeof replacer === "function";
+
+          if (hasFunctionReplacer) return replacer(key, val);
+
+          const isKeyInArrayReplacer =
+            Array.isArray(replacer) && replacer.includes(key);
+
+          if (isKeyInArrayReplacer) return val;
+
+          return val;
+        },
+        space,
+      );
+    }
+
+    if (!value) return originalStringify(value, replacer, space);
+
+    const convertedToCustomJSON = originalStringify(
       value,
-      (key, value) => {
-        if (typeof value === "bigint") return JSON.rawJSON(value.toString());
+      (key, val) => {
+        const isNoise = typeof val === "string" && noiseValue.test(val);
 
-        if (typeof replacer === "function") return replacer(key, value);
+        if (isNoise) return val.toString() + "n"; // Mark noise values with additional "n" to offset the deletion of one "n" during the processing
 
-        if (Array.isArray(replacer) && replacer.includes(key)) return value;
+        if (typeof val === "bigint") return val.toString() + "n";
 
-        return value;
+        const hasFunctionReplacer = typeof replacer === "function";
+
+        if (hasFunctionReplacer) return replacer(key, val);
+
+        const isKeyInArrayReplacer =
+          Array.isArray(replacer) && replacer.includes(key);
+
+        if (isKeyInArrayReplacer) return val;
+
+        return val;
       },
       space,
     );
+
+    const processedJSON = convertedToCustomJSON.replace(
+      bigIntsStringify,
+      "$1$2$3",
+    ); // Delete one "n" off the end of every BigInt value
+
+    const denoisedJSON = processedJSON.replace(noiseStringify, "$1$2$3"); // Remove one "n" off the end of every noisy string
+
+    return denoisedJSON;
+  } catch (error) {
+    if (error instanceof RangeError) {
+      const convertedJSON = stringifyIteratively(value, replacer, space);
+
+      if (convertedJSON === undefined) return undefined;
+
+      const supportsRawJSON = "rawJSON" in JSON;
+
+      if (supportsRawJSON) return convertedJSON;
+
+      const processedJSON = convertedJSON.replace(bigIntsStringify, "$1$2$3");
+
+      return processedJSON.replace(noiseStringify, "$1$2$3");
+    }
+
+    throw error;
   }
-
-  if (!value) return originalStringify(value, replacer, space);
-
-  const convertedToCustomJSON = originalStringify(
-    value,
-    (key, value) => {
-      const isNoise = typeof value === "string" && noiseValue.test(value);
-
-      if (isNoise) return value.toString() + "n"; // Mark noise values with additional "n" to offset the deletion of one "n" during the processing
-
-      if (typeof value === "bigint") return value.toString() + "n";
-
-      if (typeof replacer === "function") return replacer(key, value);
-
-      if (Array.isArray(replacer) && replacer.includes(key)) return value;
-
-      return value;
-    },
-    space,
-  );
-  const processedJSON = convertedToCustomJSON.replace(
-    bigIntsStringify,
-    "$1$2$3",
-  ); // Delete one "n" off the end of every BigInt value
-  const denoisedJSON = processedJSON.replace(noiseStringify, "$1$2$3"); // Remove one "n" off the end of every noisy string
-
-  return denoisedJSON;
 };
 
 const featureCache = new Map();
@@ -47891,12 +48413,15 @@ const isContextSourceSupported = () => {
 const convertMarkedBigIntsReviver = (key, value, context, userReviver) => {
   const isCustomFormatBigInt =
     typeof value === "string" && customFormat.test(value);
+
   if (isCustomFormatBigInt) return BigInt(value.slice(0, -1));
 
   const isNoiseValue = typeof value === "string" && noiseValue.test(value);
   if (isNoiseValue) return value.slice(0, -1);
 
-  if (typeof userReviver !== "function") return value;
+  const hasUserReviver = typeof userReviver === "function";
+
+  if (!hasUserReviver) return value;
 
   return userReviver(key, value, context);
 };
@@ -47914,15 +48439,18 @@ const convertMarkedBigIntsReviver = (key, value, context, userReviver) => {
  */
 const JSONParseV2 = (text, reviver) => {
   return JSON.parse(text, (key, value, context) => {
-    const isBigNumber =
-      typeof value === "number" &&
-      (value > Number.MAX_SAFE_INTEGER || value < Number.MIN_SAFE_INTEGER);
+    const isNumber = typeof value === "number";
+    const isOutOfBounds =
+      value > Number.MAX_SAFE_INTEGER || value < Number.MIN_SAFE_INTEGER;
+    const isBigNumber = isNumber && isOutOfBounds;
     const isInt = context && intRegex.test(context.source);
     const isBigInt = isBigNumber && isInt;
 
     if (isBigInt) return BigInt(context.source);
 
-    if (typeof reviver !== "function") return value;
+    const hasCustomReviver = typeof reviver === "function";
+
+    if (!hasCustomReviver) return value;
 
     return reviver(key, value, context);
   });
@@ -47931,8 +48459,107 @@ const JSONParseV2 = (text, reviver) => {
 const MAX_INT = Number.MAX_SAFE_INTEGER.toString();
 const MAX_DIGITS = MAX_INT.length;
 const stringsOrLargeNumbers =
-  /"(?:\\.|[^"])*"|-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?/g;
+  /"(?:[^"\\]|\\.)*"|-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?/g;
 const noiseValueWithQuotes = /^"-?\d+n+"$/; // Noise - strings that match the custom format before being converted to it
+
+/**
+ * Iteratively traverses the parsed object bottom-up (post-order),
+ * emulating the native JSON.parse reviver behavior.
+ * This avoids Call Stack overflows (RangeError) on deeply nested structures.
+ *
+ * @param {any} parsed The natively parsed JSON object.
+ * @param {Reviver} [userReviver] User's custom reviver function.
+ * @returns {any} The fully processed object.
+ */
+const applyReviverIteratively = (parsed, userReviver) => {
+  const rootHolder = { "": parsed };
+  const stack = [{ parent: rootHolder, key: "", visited: false }];
+
+  while (stack.length > 0) {
+    const node = stack[stack.length - 1];
+
+    if (!node.visited) {
+      node.visited = true;
+
+      const value = node.parent[node.key];
+      const isComplexObject = value !== null && typeof value === "object";
+
+      if (isComplexObject) {
+        const keys = Object.keys(value);
+
+        for (let i = keys.length - 1; i >= 0; i--) {
+          stack.push({ parent: value, key: keys[i], visited: false });
+        }
+      }
+    } else {
+      const { parent, key } = node;
+      let value = parent[key];
+
+      if (typeof value === "string") {
+        const isCustomFormatBigInt = customFormat.test(value);
+
+        if (isCustomFormatBigInt) {
+          value = BigInt(value.slice(0, -1));
+        } else {
+          const isNoise = noiseValue.test(value);
+
+          if (isNoise) value = value.slice(0, -1);
+        }
+      }
+
+      const hasUserReviver = typeof userReviver === "function";
+
+      if (hasUserReviver) {
+        value = userReviver.call(parent, key, value);
+      }
+
+      const isDeleted = value === undefined;
+
+      if (isDeleted) {
+        delete parent[key];
+      } else {
+        parent[key] = value;
+      }
+
+      stack.pop();
+    }
+  }
+
+  return rootHolder[""];
+};
+
+/**
+ * Pre-processes the JSON string to mark large numbers with an 'n' suffix.
+ *
+ * @param {string} text The raw JSON string.
+ * @returns {string} The serialized string with marked BigInts.
+ */
+const serializeBigInts = (text) => {
+  return text.replace(
+    stringsOrLargeNumbers,
+    (match, digits, fractional, exponential) => {
+      const isString = match[0] === '"';
+      const isNoise = isString && noiseValueWithQuotes.test(match);
+
+      if (isNoise) return match.substring(0, match.length - 1) + 'n"'; // Mark noise values with additional "n" to offset the deletion of one "n" during the processing
+
+      const hasFractionalOrExponential = fractional || exponential;
+
+      // With a fixed number of digits, we can correctly use lexicographical comparison to do a numeric comparison
+      const isLessThanMaxSafeInt =
+        digits &&
+        (digits.length < MAX_DIGITS ||
+          (digits.length === MAX_DIGITS && digits <= MAX_INT));
+
+      const isStandardValue =
+        isString || hasFractionalOrExponential || isLessThanMaxSafeInt;
+
+      if (isStandardValue) return match;
+
+      return '"' + match + 'n"';
+    },
+  );
+};
 
 /**
  * Converts a JSON string into a JavaScript value.
@@ -47945,42 +48572,34 @@ const noiseValueWithQuotes = /^"-?\d+n+"$/; // Noise - strings that match the cu
  *
  * @param {string} text A valid JSON string.
  * @param {Reviver} [reviver]
- *   A function that transforms the results. This function is called for each member
- *   of the object. If a member contains nested objects, the nested objects are
- *   transformed before the parent object is.
+ * A function that transforms the results. This function is called for each member
+ * of the object. If a member contains nested objects, the nested objects are
+ * transformed before the parent object is.
  * @returns {any} The parsed JavaScript value.
  * @throws {SyntaxError} If text is not valid JSON.
  */
 const JSONParse = (text, reviver) => {
   if (!text) return originalParse(text, reviver);
 
-  if (isContextSourceSupported()) return JSONParseV2(text, reviver); // Shortcut to a faster (2x) and simpler version
+  try {
+    if (isContextSourceSupported()) return JSONParseV2(text, reviver); // Shortcut to a faster (2x) and simpler version
 
-  // Find and mark big numbers with "n"
-  const serializedData = text.replace(
-    stringsOrLargeNumbers,
-    (text, digits, fractional, exponential) => {
-      const isString = text[0] === '"';
-      const isNoise = isString && noiseValueWithQuotes.test(text);
+    // Find and mark big numbers with "n"
+    const serializedData = serializeBigInts(text);
 
-      if (isNoise) return text.substring(0, text.length - 1) + 'n"'; // Mark noise values with additional "n" to offset the deletion of one "n" during the processing
+    return originalParse(serializedData, (key, value, context) =>
+      convertMarkedBigIntsReviver(key, value, context, reviver),
+    );
+  } catch (error) {
+    if (error instanceof RangeError) {
+      const serializedData = serializeBigInts(text);
+      const parsed = originalParse(serializedData);
 
-      const isFractionalOrExponential = fractional || exponential;
-      const isLessThanMaxSafeInt =
-        digits &&
-        (digits.length < MAX_DIGITS ||
-          (digits.length === MAX_DIGITS && digits <= MAX_INT)); // With a fixed number of digits, we can correctly use lexicographical comparison to do a numeric comparison
+      return applyReviverIteratively(parsed, reviver);
+    }
 
-      if (isString || isFractionalOrExponential || isLessThanMaxSafeInt)
-        return text;
-
-      return '"' + text + 'n"';
-    },
-  );
-
-  return originalParse(serializedData, (key, value, context) =>
-    convertMarkedBigIntsReviver(key, value, context, reviver),
-  );
+    throw error;
+  }
 };
 
 
@@ -48034,7 +48653,7 @@ class RequestError extends Error {
 
 
 // pkg/dist-src/version.js
-var dist_bundle_VERSION = "10.0.10";
+var dist_bundle_VERSION = "10.0.14";
 
 // pkg/dist-src/defaults.js
 var defaults_default = {
@@ -48172,7 +48791,10 @@ async function getResponseData(response) {
     } catch (err) {
       return text;
     }
-  } else if (mimetype.type.startsWith("text/") || mimetype.parameters.charset?.toLowerCase() === "utf-8") {
+  } else if (mimetype.type.startsWith("text/") || // `application/octet-stream` is the canonical "arbitrary binary" type
+  // (RFC 2046) and must never be decoded as text, even when the response
+  // carries a (misleading) `charset=utf-8` parameter — see #751.
+  mimetype.parameters.charset?.toLowerCase() === "utf-8" && mimetype.type !== "application/octet-stream") {
     return response.text().catch(noop);
   } else {
     return response.arrayBuffer().catch(
@@ -48191,9 +48813,10 @@ function toErrorMessage(data) {
   if (data instanceof ArrayBuffer) {
     return "Unknown error";
   }
-  if ("message" in data) {
-    const suffix = "documentation_url" in data ? ` - ${data.documentation_url}` : "";
-    return Array.isArray(data.errors) ? `${data.message}: ${data.errors.map((v) => JSON.stringify(v)).join(", ")}${suffix}` : `${data.message}${suffix}`;
+  if (typeof data === "object" && data !== null && "message" in data) {
+    const objectData = data;
+    const suffix = "documentation_url" in objectData ? ` - ${objectData.documentation_url}` : "";
+    return Array.isArray(objectData.errors) ? `${objectData.message}: ${objectData.errors.map((v) => JSON.stringify(v)).join(", ")}${suffix}` : `${objectData.message}${suffix}`;
   }
   return `Unknown error: ${JSON.stringify(data)}`;
 }
@@ -48260,6 +48883,9 @@ var GraphqlResponseError = class extends Error {
       Error.captureStackTrace(this, this.constructor);
     }
   }
+  request;
+  headers;
+  response;
   name = "GraphqlResponseError";
   errors;
   data;
@@ -48355,6 +48981,7 @@ function withCustomRequest(customRequest) {
   });
 }
 
+/* v8 ignore if -- @preserve */
 
 ;// CONCATENATED MODULE: ./node_modules/@octokit/auth-token/dist-bundle/index.js
 // pkg/dist-src/is-jwt.js
@@ -48412,7 +49039,7 @@ var createTokenAuth = function createTokenAuth2(token) {
 
 
 ;// CONCATENATED MODULE: ./node_modules/@octokit/core/dist-src/version.js
-const version_VERSION = "7.0.6";
+const version_VERSION = "7.0.7";
 
 
 ;// CONCATENATED MODULE: ./node_modules/@octokit/core/dist-src/index.js
@@ -52000,6 +52627,9 @@ module.exports = /*#__PURE__*/JSON.parse('{"name":"seek-bzip","version":"2.0.0",
 /******/ }
 /******/ 
 /************************************************************************/
+/******/ /* webpack/runtime/asset-relocator-loader */
+/******/ if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = decodeURIComponent(new URL('.', import.meta.url).pathname).slice(import.meta.url.match(/^file:\/\/\/\w:/) ? 1 : 0, -1) + "/";
+/******/ 
 /******/ /* webpack/runtime/async module */
 /******/ (() => {
 /******/ 	var webpackQueues = typeof Symbol === "function" ? Symbol("webpack queues") : "__webpack_queues__";
@@ -52097,10 +52727,6 @@ module.exports = /*#__PURE__*/JSON.parse('{"name":"seek-bzip","version":"2.0.0",
 /******/ (() => {
 /******/ 	__nccwpck_require__.o = (obj, prop) => (Object.prototype.hasOwnProperty.call(obj, prop))
 /******/ })();
-/******/ 
-/******/ /* webpack/runtime/compat */
-/******/ 
-/******/ if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = new URL('.', import.meta.url).pathname.slice(import.meta.url.match(/^file:\/\/\/\w:/) ? 1 : 0, -1) + "/";
 /******/ 
 /************************************************************************/
 /******/ 

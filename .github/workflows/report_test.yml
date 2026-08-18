@@ -26,7 +26,7 @@ jobs:
     steps:
       # To use this repository's private action,
       # you must check out the repository
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - run: npm ci --no-fund --no-audit --no-progress
       - run: npm run checks
@@ -52,7 +52,7 @@ jobs:
         run: npm run e2e
 
       - name: Checkout gh-pages
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         if: always()
         continue-on-error: true
         with:
@@ -99,7 +99,7 @@ jobs:
     steps:
       # To use this repository's private action,
       # you must check out the repository
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - run: npm ci --no-fund --no-audit --no-progress
       - run: npm run build
@@ -109,7 +109,7 @@ jobs:
         run: npm run e2e -- --update-snapshots
 
       - name: Checkout gh-pages
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         if: always()
         continue-on-error: true
         with:
@@ -156,7 +156,7 @@ jobs:
     steps:
       # To use this repository's private action,
       # you must check out the repository
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - run: npm ci --no-fund --no-audit --no-progress
       - run: npm run build
@@ -166,7 +166,7 @@ jobs:
         run: npm run e2e -- --update-snapshots
 
       - name: Checkout gh-pages
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         if: always()
         continue-on-error: true
         with:
